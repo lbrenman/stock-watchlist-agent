@@ -1,0 +1,24 @@
+# A2A server image for AgentCore Runtime.
+# AgentCore requires an ARM64 image serving A2A on port 9000. Build with:
+#   docker buildx build --platform linux/arm64 -f Dockerfile.agentcore -t <ecr-uri>:<tag> --push .
+# (deploy/build_and_push.sh does this.)
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    A2A_HOST=0.0.0.0
+
+# Non-root user with a writable home (the bundled CLI keeps a little state under ~).
+RUN useradd -m -u 1000 agent
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY app ./app
+
+USER agent
+EXPOSE 9000
+
+# All configuration comes from runtime environment variables (see .env.example).
+CMD ["python", "-m", "app.a2a_server"]

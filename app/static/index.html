@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Watchlist Agent</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #eef1f3;
+    --surface: #ffffff;
+    --ink: #16202b;
+    --muted: #5d6b79;
+    --line: #d5dce2;
+    --accent: #16202b;
+    --accent-ink: #ffffff;
+    --read: #0f766e;
+    --write: #7a3e9d;
+    --danger: #b3261e;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11161b;
+      --surface: #1a2129;
+      --ink: #e6ebf0;
+      --muted: #94a3b1;
+      --line: #2c3742;
+      --accent: #e6ebf0;
+      --accent-ink: #11161b;
+      --read: #4fd1c5;
+      --write: #c79bea;
+      --danger: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+  [hidden] { display: none !important; }
+  button, input, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--read); outline-offset: 2px; }
+
+  /* ---------- connect screen ---------- */
+  #connect { min-height: 100%; display: grid; place-items: center; padding: 24px; }
+  .panel { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 28px; }
+  .panel h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.01em; }
+  .panel p { margin: 0 0 20px; color: var(--muted); }
+  label { display: block; font-weight: 600; margin: 14px 0 4px; }
+  input[type=password], input[type=text] {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); font-family: var(--mono); font-size: 14px;
+  }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .field-error { color: var(--danger); font-size: 13px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  #connect .btn { margin-top: 22px; width: 100%; }
+  #connect-error { margin-top: 14px; }
+
+  /* ---------- app shell ---------- */
+  #app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+  header .meta { color: var(--muted); font-size: 13px; margin-left: auto; text-align: right; }
+  header .meta b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+  .shell { display: grid; grid-template-columns: 290px 1fr; min-height: 0; }
+  aside { border-right: 1px solid var(--line); padding: 16px; overflow: auto; background: var(--surface); }
+  aside h2 { margin: 0 0 4px; font-size: 14px; }
+  aside .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .tool { padding: 8px 10px 8px 12px; border-left: 3px solid var(--line); margin-bottom: 8px; border-radius: 0 6px 6px 0; transition: background-color .3s; }
+  .tool.read { border-left-color: var(--read); }
+  .tool.write { border-left-color: var(--write); }
+  .tool.skill { border-left-color: var(--ink); }
+  .tool.active { background: color-mix(in srgb, var(--read) 16%, transparent); }
+  .tool.write.active { background: color-mix(in srgb, var(--write) 16%, transparent); }
+  .tool .n { font-family: var(--mono); font-size: 13px; word-break: break-all; }
+  .tool .d { color: var(--muted); font-size: 13px; }
+
+  main { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+  #log { overflow: auto; padding: 22px clamp(16px, 5vw, 56px); }
+  .empty { max-width: 520px; margin: 8vh auto 0; color: var(--muted); }
+  .empty h2 { color: var(--ink); margin: 0 0 6px; font-size: 20px; letter-spacing: -0.01em; }
+  .turn { max-width: 760px; margin: 0 auto 14px; }
+  .user { padding: 2px 0 2px 12px; border-left: 3px solid var(--accent); font-weight: 600; white-space: pre-wrap; }
+  .assistant { white-space: pre-wrap; }
+  .err { color: var(--danger); border: 1px solid var(--danger); border-radius: 6px; padding: 8px 12px; white-space: pre-wrap; word-break: break-word; }
+  .foot { color: var(--muted); font-size: 12px; }
+
+  details.call { border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px; background: var(--surface); }
+  details.call.read { border-left-color: var(--read); }
+  details.call.write { border-left-color: var(--write); }
+  details.call summary { cursor: pointer; padding: 7px 12px; display: flex; gap: 10px; align-items: baseline; list-style: none; }
+  details.call summary::-webkit-details-marker { display: none; }
+  details.call .name { font-family: var(--mono); font-size: 13.5px; font-weight: 600; }
+  details.call .kind { font-size: 12px; color: var(--muted); }
+  details.call .state { margin-left: auto; font-size: 12px; color: var(--muted); }
+  details.call.error .state { color: var(--danger); }
+  details.call .body { padding: 0 12px 10px; }
+  details.call .cap { font-size: 12px; color: var(--muted); margin: 8px 0 2px; }
+  details.call pre { margin: 0; padding: 8px 10px; background: var(--bg); border-radius: 5px; font: 12.5px/1.45 var(--mono); overflow: auto; max-height: 260px; white-space: pre-wrap; word-break: break-word; }
+
+  form#composer { padding: 12px clamp(16px, 5vw, 56px) 18px; border-top: 1px solid var(--line); background: var(--surface); }
+  .composer-inner { max-width: 760px; margin: 0 auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
+  .chip:hover { border-color: var(--ink); }
+  .row { display: flex; gap: 8px; align-items: flex-end; }
+  textarea { flex: 1; resize: none; max-height: 140px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+
+  @media (max-width: 760px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 28vh; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tool { transition: none; } }
+</style>
+</head>
+<body>
+
+<section id="connect">
+  <div class="panel">
+    <h1>Connect an account</h1>
+    <p>Each MCP API key has its own watchlist. Use a different key to demo another account.</p>
+
+    <label for="model-key">Model API key</label>
+    <input id="model-key" type="password" autocomplete="off" spellcheck="false">
+    <div class="hint" id="model-hint"></div>
+    <div class="field-error" id="model-error"></div>
+
+    <label for="mcp-key">MCP API key</label>
+    <input id="mcp-key" type="password" autocomplete="off" spellcheck="false">
+    <div class="hint" id="mcp-hint"></div>
+    <div class="field-error" id="mcp-error"></div>
+
+    <button class="btn" id="connect-btn" type="button">Connect</button>
+    <div class="field-error" id="connect-error"></div>
+  </div>
+</section>
+
+<section id="app" hidden>
+  <header>
+    <h1>Stock Watchlist Agent</h1>
+    <div class="meta"><b id="route-label"></b><br>MCP account <b id="account"></b></div>
+    <button class="btn quiet" id="switch-btn" type="button">Switch account</button>
+  </header>
+  <div class="shell">
+    <aside>
+      <h2 id="tools-heading">Tools discovered</h2>
+      <p class="sub" id="tools-sub"></p>
+      <div id="tools"></div>
+    </aside>
+    <main>
+      <div id="log"></div>
+      <form id="composer">
+        <div class="composer-inner">
+          <div class="chips" id="chips"></div>
+          <div class="row">
+            <textarea id="input" rows="1" placeholder="Ask for a quote or change the watchlist"></textarea>
+            <button class="btn" id="send-btn" type="submit">Send</button>
+          </div>
+        </div>
+      </form>
+    </main>
+  </div>
+</section>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const STORE = "swa.keys";
+const state = { keys: { model: "", mcp: "" }, history: [], busy: false, cfg: null, toolEls: {},
+                sessionId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2) + "-session-id") };
+
+const SUGGESTIONS = [
+  "What is the quote for AAPL?",
+  "Show my watchlist",
+  "Add NVDA and TSLA to my watchlist",
+  "Show quotes for everything on my watchlist",
+  "Remove TSLA",
+  "Clear my watchlist",
+];
+
+// Display heuristic only: tools named Get* are shown as reads, everything else as writes.
+const kindOf = (name) => (/^get/i.test(name) ? "read" : "write");
+
+function h(tag, props = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === false || v == null) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return el;
+}
+
+function authHeaders(json = false) {
+  const hd = {};
+  if (json) hd["Content-Type"] = "application/json";
+  if (state.keys.model) hd["X-Model-Key"] = state.keys.model;
+  if (state.keys.mcp) hd["X-Mcp-Key"] = state.keys.mcp;
+  hd["X-Session-Id"] = state.sessionId;
+  return hd;
+}
+
+/* ---------------- connect ---------------- */
+function clearErrors() {
+  for (const id of ["model-error", "mcp-error", "connect-error"]) $("#" + id).textContent = "";
+}
+
+async function tryConnect() {
+  const r = await fetch("/api/connect", { method: "POST", headers: authHeaders() });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, errors: body.errors || { connect: `Request failed (${r.status})` } };
+  return { ok: true, tools: body.tools || [], kind: body.kind || "tools", label: body.label || "" };
+}
+
+async function onConnect() {
+  clearErrors();
+  state.keys = { model: $("#model-key").value.trim(), mcp: $("#mcp-key").value.trim() };
+  const btn = $("#connect-btn");
+  btn.disabled = true;
+  btn.textContent = "Connecting";
+  try {
+    const res = await tryConnect();
+    if (!res.ok) {
+      const e = res.errors;
+      $("#model-error").textContent = e.model ? `Model: ${e.model}` : "";
+      $("#mcp-error").textContent = e.mcp ? `MCP: ${e.mcp}` : "";
+      $("#connect-error").textContent = e.keys || e.config || e.connect || "";
+      return;
+    }
+    try { sessionStorage.setItem(STORE, JSON.stringify(state.keys)); } catch {}
+    showApp(res);
+  } catch (err) {
+    $("#connect-error").textContent = `Could not reach the backend: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Connect";
+  }
+}
+
+function showApp(res) {
+  $("#connect").hidden = true;
+  $("#app").hidden = false;
+  $("#route-label").textContent = res.label;
+  $("#account").textContent = state.keys.mcp ? "key ending " + state.keys.mcp.slice(-4) : "server default";
+  renderTools(res.tools, res.kind);
+  resetChat();
+  $("#input").focus();
+}
+
+function renderTools(tools, kind = "tools") {
+  const box = $("#tools");
+  box.replaceChildren();
+  state.toolEls = {};
+  const skills = kind === "skills";
+  $("#tools-heading").textContent = skills ? "Agent skills" : "Tools discovered";
+  $("#tools-sub").textContent = tools.length
+    ? (skills ? `${tools.length} skills from the agent card. Tool calls appear in the chat as they happen.`
+              : `${tools.length} tools from the MCP server, read from the server at connect time.`)
+    : (skills ? "The agent card lists no skills." : "The server connected but reported no tools.");
+  for (const t of tools) {
+    const toolKind = skills ? "skill" : (t.read_only === true ? "read" : kindOf(t.name));
+    const el = h("div", { class: `tool ${toolKind}` },
+      h("div", { class: "n" }, t.name),
+      t.description ? h("div", { class: "d" }, t.description) : null);
+    state.toolEls[t.name] = el;
+    box.append(el);
+  }
+}
+
+function switchAccount() {
+  try { sessionStorage.removeItem(STORE); } catch {}
+  state.keys = { model: "", mcp: "" };
+  state.history = [];
+  $("#model-key").value = "";
+  $("#mcp-key").value = "";
+  clearErrors();
+  $("#app").hidden = true;
+  $("#connect").hidden = false;
+  $("#model-key").focus();
+}
+
+/* ---------------- chat ---------------- */
+function resetChat() {
+  state.history = [];
+  const log = $("#log");
+  log.replaceChildren(
+    h("div", { class: "empty", id: "empty" },
+      h("h2", {}, "Ask about a quote, or change the watchlist"),
+      h("div", {}, "Every tool call the agent makes shows up here as it happens.")));
+  const chips = $("#chips");
+  chips.replaceChildren(...SUGGESTIONS.map((s) =>
+    h("button", { class: "chip", type: "button", onclick: () => send(s) }, s)));
+}
+
+function addTurn(el) {
+  $("#empty")?.remove();
+  const wrap = h("div", { class: "turn" }, el);
+  const log = $("#log");
+  log.append(wrap);
+  log.scrollTop = log.scrollHeight;
+  return wrap;
+}
+
+function pretty(text) {
+  try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+}
+
+function addToolCall(ev) {
+  const kind = kindOf(ev.name);
+  const state_ = h("span", { class: "state" }, "running");
+  const result = h("pre", {}, "waiting for result");
+  const card = h("details", { class: `call ${kind}`, open: true },
+    h("summary", {}, h("span", { class: "name" }, ev.name), h("span", { class: kind === "read" ? "kind" : "kind" }, kind), state_),
+    h("div", { class: "body" },
+      h("div", { class: "cap" }, "Input"),
+      h("pre", {}, JSON.stringify(ev.input, null, 2)),
+      h("div", { class: "cap" }, "Result"),
+      result));
+  addTurn(card);
+  const side = state.toolEls[ev.name];
+  if (side) { side.classList.add("active"); setTimeout(() => side.classList.remove("active"), 1800); }
+  return { card, state: state_, result };
+}
+
+async function send(text) {
+  text = (text || "").trim();
+  if (!text || state.busy) return;
+  state.busy = true;
+  $("#send-btn").disabled = true;
+  $("#input").value = "";
+  autosize();
+  $("#chips").hidden = true;
+
+  state.history.push({ role: "user", content: text });
+  addTurn(h("div", { class: "user" }, text));
+
+  const calls = {};
+  const said = [];
+  try {
+    const r = await fetch("/api/chat", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({ messages: state.history }),
+    });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      const e = body.errors || {};
+      addTurn(h("div", { class: "err" }, Object.values(e).join("\n") || `Request failed (${r.status})`));
+      return;
+    }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const chunk = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        if (chunk.startsWith("data: ")) handle(JSON.parse(chunk.slice(6)), calls, said);
+      }
+    }
+  } catch (err) {
+    addTurn(h("div", { class: "err" }, `Connection problem: ${err.message}`));
+  } finally {
+    if (said.length) state.history.push({ role: "assistant", content: said.join("\n\n") });
+    state.busy = false;
+    $("#send-btn").disabled = false;
+    $("#input").focus();
+  }
+}
+
+function handle(ev, calls, said) {
+  if (ev.type === "text") {
+    said.push(ev.text);
+    addTurn(h("div", { class: "assistant" }, ev.text));
+  } else if (ev.type === "tool_call") {
+    calls[ev.id] = addToolCall(ev);
+  } else if (ev.type === "tool_result") {
+    const c = calls[ev.id];
+    if (!c) return;
+    c.result.textContent = pretty(ev.content) || "(empty result)";
+    c.state.textContent = ev.is_error ? "error" : "done";
+    if (ev.is_error) c.card.classList.add("error");
+  } else if (ev.type === "error") {
+    addTurn(h("div", { class: "err" }, ev.message));
+  } else if (ev.type === "done") {
+    const secs = (ev.duration_ms / 1000).toFixed(1);
+    const turns = ev.turns ? `${ev.turns} model turn${ev.turns === 1 ? "" : "s"}, ` : "";
+    addTurn(h("div", { class: "foot" }, `${turns}${secs} s`));
+  }
+}
+
+function autosize() {
+  const ta = $("#input");
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
+}
+
+function configureKeyField(which, mode, hints) {
+  const input = $("#" + which + "-key");
+  $("#" + which + "-hint").textContent = hints[mode] || "";
+  input.disabled = mode === "unused";
+  input.placeholder = mode === "unused" ? "Not used" : (mode === "optional" ? "Using the default" : "");
+}
+
+/* ---------------- boot ---------------- */
+async function boot() {
+  state.cfg = await (await fetch("/api/config")).json();
+  configureKeyField("model", state.cfg.model_key, {
+    unused: "Direct to Anthropic: the server's Anthropic key is used.",
+    required: "Required.",
+    optional: "Leave blank to use the server or agent default.",
+  });
+  configureKeyField("mcp", state.cfg.mcp_key, {
+    required: "Required. Sent as x-api-key to the MCP server.",
+    optional: "Leave blank to use the server or agent default.",
+  });
+
+  $("#connect-btn").addEventListener("click", onConnect);
+  for (const id of ["model-key", "mcp-key"])
+    $("#" + id).addEventListener("keydown", (e) => { if (e.key === "Enter") onConnect(); });
+  $("#switch-btn").addEventListener("click", switchAccount);
+  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
+  $("#input").addEventListener("input", autosize);
+  $("#input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("#input").value); }
+  });
+
+  // Restore this tab's keys after a reload.
+  let saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(STORE) || "null"); } catch {}
+  if (saved) {
+    state.keys = saved;
+    try {
+      const res = await tryConnect();
+      if (res.ok) return showApp(res);
+    } catch {}
+    state.keys = { model: "", mcp: "" };
+    try { sessionStorage.removeItem(STORE); } catch {}
+  }
+  $("#connect").hidden = false;
+}
+boot();
+</script>
+</body>
+</html>

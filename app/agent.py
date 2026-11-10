@@ -1,7 +1,6 @@
 """Agent logic. No web-framework imports, so it can be reused or redeployed.
 
 Public API:
-    connect(settings, model_key, mcp_key)  -> list of discovered tools (validates both keys)
     run_agent(settings, messages, model_key, mcp_key) -> async stream of event dicts
 
 Event dicts yielded by run_agent:
@@ -13,7 +12,6 @@ Event dicts yielded by run_agent:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any, AsyncIterator
@@ -21,7 +19,6 @@ from typing import Any, AsyncIterator
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
-    ClaudeSDKClient,
     ResultMessage,
     TextBlock,
     ToolResultBlock,
@@ -53,14 +50,6 @@ BUILTIN_TOOLS = [
 _RUNTIME_ENV = {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
 
 
-class ConnectFailed(Exception):
-    """Connect validation failed. `errors` maps "model" / "mcp" to a message."""
-
-    def __init__(self, errors: dict[str, str]):
-        super().__init__("; ".join(f"{k}: {v}" for k, v in errors.items()))
-        self.errors = errors
-
-
 # --------------------------------------------------------------------------- #
 # Options
 # --------------------------------------------------------------------------- #
@@ -76,9 +65,7 @@ def _build_options(
     env: dict[str, str],
     headers: dict[str, str],
     *,
-    with_mcp: bool,
     max_turns: int,
-    system_prompt: str = SYSTEM_PROMPT,
 ) -> ClaudeAgentOptions:
     model = settings.model.name
     full_env = {
@@ -93,22 +80,16 @@ def _build_options(
         full_env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
     server = settings.mcp.server_name
-    mcp_servers: dict[str, Any] = {}
-    allowed: list[str] = []
-    if with_mcp:
-        mcp_servers[server] = {
-            "type": settings.mcp.transport,
-            "url": settings.mcp.url,
-            "headers": headers,
-        }
-        allowed.append(f"mcp__{server}__*")
+    mcp_servers: dict[str, Any] = {
+        server: {"type": settings.mcp.transport, "url": settings.mcp.url, "headers": headers}
+    }
 
     return ClaudeAgentOptions(
         model=model,
-        system_prompt=system_prompt,
+        system_prompt=SYSTEM_PROMPT,
         tools=[],  # no built-in tools: the MCP tools are the whole demo
         disallowed_tools=BUILTIN_TOOLS,
-        allowed_tools=allowed,
+        allowed_tools=[f"mcp__{server}__*"],
         mcp_servers=mcp_servers,
         strict_mcp_config=True,  # ignore any other MCP config on the machine
         setting_sources=[],  # ignore user/project/local Claude Code settings
@@ -133,80 +114,6 @@ def _describe(exc: BaseException) -> str:
         if val:
             parts.append(f"{attr}={val}")
     return " ".join(parts)
-
-
-# --------------------------------------------------------------------------- #
-# Connect: validate both keys and discover tools
-# --------------------------------------------------------------------------- #
-async def _check_model(settings: Settings, env, headers) -> None:
-    options = _build_options(
-        settings, env, headers, with_mcp=False, max_turns=1,
-        system_prompt="Reply with the single word: ok",
-    )
-    async for msg in query(prompt="ping", options=options):
-        if isinstance(msg, ResultMessage) and msg.is_error:
-            detail = msg.result or "; ".join(msg.errors or []) or msg.terminal_reason or "unknown error"
-            status = f" (HTTP {msg.api_error_status})" if msg.api_error_status else ""
-            raise RuntimeError(f"{detail}{status}")
-
-
-async def _discover_tools(settings: Settings, env, headers, timeout: float = 25.0) -> list[dict[str, Any]]:
-    options = _build_options(settings, env, headers, with_mcp=True, max_turns=1)
-    name = settings.mcp.server_name
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-
-    async with ClaudeSDKClient(options=options) as client:
-        server: dict[str, Any] | None = None
-        while True:
-            status = await client.get_mcp_status()
-            server = next((s for s in status.get("mcpServers", []) if s.get("name") == name), None)
-            if server and server.get("status") != "pending":
-                break
-            if loop.time() > deadline:
-                break
-            await asyncio.sleep(0.5)
-
-    if server is None:
-        raise RuntimeError("The MCP server was not reported by the agent runtime.")
-    state = server.get("status")
-    if state == "pending":
-        raise RuntimeError(f"Timed out after {int(timeout)}s waiting for the MCP server to connect.")
-    if state != "connected":
-        detail = server.get("error") or ""
-        hint = "the key may be wrong or the server unreachable"
-        raise RuntimeError(f"MCP server status '{state}' ({hint}). {detail}".strip())
-
-    tools = []
-    for t in server.get("tools") or []:
-        annotations = t.get("annotations") or {}
-        tools.append({
-            "name": t.get("name", ""),
-            "description": t.get("description") or "",
-            "read_only": annotations.get("readOnlyHint") if isinstance(annotations, dict) else None,
-        })
-    return tools
-
-
-async def connect(settings: Settings, model_key: str | None, mcp_key: str | None) -> list[dict[str, Any]]:
-    """Validate both keys and return the MCP server's tools.
-
-    Raises MissingKeyError / UnsupportedAuthMode (from auth.py) or ConnectFailed.
-    """
-    env, headers, secrets = _credentials(settings, model_key, mcp_key)
-    model_res, mcp_res = await asyncio.gather(
-        _check_model(settings, env, headers),
-        _discover_tools(settings, env, headers),
-        return_exceptions=True,
-    )
-    errors: dict[str, str] = {}
-    if isinstance(model_res, BaseException):
-        errors["model"] = _redact(_describe(model_res), secrets)
-    if isinstance(mcp_res, BaseException):
-        errors["mcp"] = _redact(_describe(mcp_res), secrets)
-    if errors:
-        raise ConnectFailed(errors)
-    return mcp_res  # type: ignore[return-value]
 
 
 # --------------------------------------------------------------------------- #
@@ -280,7 +187,7 @@ async def run_agent(
 ) -> AsyncIterator[dict[str, Any]]:
     """Run one agent turn and stream normalized events."""
     env, headers, secrets = _credentials(settings, model_key, mcp_key)
-    options = _build_options(settings, env, headers, with_mcp=True, max_turns=settings.max_turns)
+    options = _build_options(settings, env, headers, max_turns=settings.max_turns)
     prefix = f"mcp__{settings.mcp.server_name}__"
     finished = False
 

@@ -99,7 +99,8 @@
   .side { background: var(--panel); border-right: 1px solid var(--line); padding: 20px; overflow: auto; display: flex; flex-direction: column; gap: 22px; }
   .side h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
   .agent-name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
-  .agent-sub { color: var(--ink-2); font-size: 13.5px; margin-top: 2px; }
+  .agent-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .agent-desc { color: var(--ink-2); font-size: 13.5px; margin: 8px 0 0; }
   .card-box { border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 12px; }
   .card-status { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
   .dotlive { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
@@ -238,22 +239,20 @@
       <h1>Connect an account</h1>
       <p>Each MCP API key has its own watchlist. Use a different key to demo another account.</p>
 
-      <div id="agent-field" hidden>
-        <label for="agent-key">Agent API key</label>
-        <input id="agent-key" type="password" autocomplete="off" spellcheck="false">
-        <div class="hint" id="agent-hint"></div>
-        <div class="field-error" id="agent-error"></div>
-      </div>
-
-      <label for="model-key">Model API key</label>
-      <input id="model-key" type="password" autocomplete="off" spellcheck="false">
-      <div class="hint" id="model-hint"></div>
-      <div class="field-error" id="model-error"></div>
+      <label for="agent-key">Agent API key</label>
+      <input id="agent-key" type="password" autocomplete="off" spellcheck="false">
+      <div class="hint">Needed when the agent sets AGENT_API_KEYS. Sent as x-api-key.</div>
+      <div class="field-error" id="agent-error"></div>
 
       <label for="mcp-key">MCP API key</label>
       <input id="mcp-key" type="password" autocomplete="off" spellcheck="false">
-      <div class="hint" id="mcp-hint"></div>
+      <div class="hint">Decides whose watchlist you see. Leave blank to use the agent's default.</div>
       <div class="field-error" id="mcp-error"></div>
+
+      <label for="model-key">Model API key</label>
+      <input id="model-key" type="password" autocomplete="off" spellcheck="false">
+      <div class="hint">Optional. Leave blank to use the agent's own model setting.</div>
+      <div class="field-error" id="model-error"></div>
 
       <button class="btn" id="connect-btn" type="button">Connect</button>
       <div class="field-error" id="connect-error"></div>
@@ -269,28 +268,29 @@
       Stock Watchlist Agent
     </div>
     <div class="spacer"></div>
-    <span class="pill" title="Model route"><b id="route-label"></b></span>
     <span class="pill">Account <b id="account"></b></span>
     <button class="btn quiet" id="switch-btn" type="button">Switch account</button>
   </header>
   <div class="body">
     <aside class="side">
       <section>
-        <h3>Agent card</h3>
+        <h3>Agent</h3>
         <div class="card-box">
-          <div class="card-status"><span class="dotlive" id="card-dot"></span><span id="card-status">Checking</span></div>
+          <div class="card-status"><span class="dotlive up"></span><span id="agent-title"></span></div>
+          <div class="agent-sub" id="agent-version"></div>
+          <p class="agent-desc" id="agent-desc"></p>
+          <h3 style="margin-top:14px">Agent card</h3>
           <div class="url" id="card-url"></div>
           <div class="card-actions">
             <button class="btn quiet tiny" id="card-copy" type="button">Copy</button>
             <a class="btn quiet tiny" id="card-open" target="_blank" rel="noopener" style="text-decoration:none">Open</a>
           </div>
-          <div class="card-note" id="card-note"></div>
           <div class="card-warn" id="card-warn" hidden></div>
         </div>
       </section>
       <section>
-        <h3 id="tools-heading">Tools discovered</h3>
-        <p class="sub" id="tools-sub"></p>
+        <h3>Skills</h3>
+        <p class="sub" id="skills-sub"></p>
         <div id="tools"></div>
       </section>
     </aside>
@@ -312,7 +312,7 @@
 const $ = (s) => document.querySelector(s);
 const STORE = "swa.keys";
 const state = {
-  keys: { agent: "", model: "", mcp: "" }, history: [], busy: false, cfg: null, toolEls: {}, cardTimer: null,
+  keys: { agent: "", model: "", mcp: "" }, history: [], busy: false, cfg: null,
   sessionId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2) + "-session-id"),
 };
 
@@ -343,9 +343,9 @@ function h(tag, props = {}, ...kids) {
 function authHeaders(json = false) {
   const hd = {};
   if (json) hd["Content-Type"] = "application/json";
-  if (state.keys.model) hd["X-Model-Key"] = state.keys.model;
-  if (state.keys.mcp) hd["X-Mcp-Key"] = state.keys.mcp;
   if (state.keys.agent) hd["X-Api-Key"] = state.keys.agent;
+  if (state.keys.mcp) hd["X-Mcp-Key"] = state.keys.mcp;
+  if (state.keys.model) hd["X-Model-Key"] = state.keys.model;
   hd["X-Session-Id"] = state.sessionId;
   return hd;
 }
@@ -438,7 +438,7 @@ async function tryConnect() {
   const r = await fetch("/api/connect", { method: "POST", headers: authHeaders() });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) return { ok: false, errors: body.errors || { connect: `Request failed (${r.status})` } };
-  return { ok: true, tools: body.tools || [], kind: body.kind || "tools", label: body.label || "" };
+  return { ok: true, agent: body };
 }
 
 async function onConnect() {
@@ -452,13 +452,11 @@ async function onConnect() {
     if (!res.ok) {
       const e = res.errors;
       $("#agent-error").textContent = e.agent || "";
-      $("#model-error").textContent = e.model ? `Model: ${e.model}` : "";
-      $("#mcp-error").textContent = e.mcp ? `MCP: ${e.mcp}` : "";
-      $("#connect-error").textContent = e.keys || e.config || e.connect || "";
+      $("#connect-error").textContent = e.connect || e.config || "";
       return;
     }
     try { sessionStorage.setItem(STORE, JSON.stringify(state.keys)); } catch {}
-    showApp(res);
+    showApp(res.agent);
   } catch (err) {
     $("#connect-error").textContent = `Could not reach the backend: ${err.message}`;
   } finally {
@@ -467,18 +465,16 @@ async function onConnect() {
   }
 }
 
-function showApp(res) {
+function showApp(agent) {
   $("#connect").hidden = true;
   $("#app").hidden = false;
-  $("#route-label").textContent = res.label;
-  $("#account").textContent = state.keys.mcp ? "key ending " + state.keys.mcp.slice(-4) : "server default";
-  renderTools(res.tools, res.kind);
-  renderCard();
+  $("#account").textContent = state.keys.mcp ? "key ending " + state.keys.mcp.slice(-4) : "agent default";
+  renderAgent(agent);
   resetChat();
   $("#input").focus();
 }
 
-/* ---------------- agent card panel ---------------- */
+/* ---------------- agent panel ---------------- */
 // In a Codespace, a card URL that says localhost is shown as the forwarded address instead.
 function displayCardUrl(url) {
   try {
@@ -490,40 +486,33 @@ function displayCardUrl(url) {
   return url;
 }
 
-function renderCard() {
+function renderAgent(agent) {
+  $("#agent-title").textContent = `${agent.name} is connected`;
+  $("#agent-version").textContent = agent.version ? `Version ${agent.version}` : "";
+  $("#agent-desc").textContent = agent.description || "";
+
   const shown = displayCardUrl(state.cfg.agent_card_url);
   $("#card-url").textContent = shown;
   $("#card-open").setAttribute("href", shown);
-  const remote = state.cfg.mode === "a2a";
-  $("#card-note").textContent = remote
-    ? "The A2A agent this UI is talking to."
-    : "Served by python -m app.a2a_server. The chat on this page runs the agent inside the UI server instead.";
-  if (remote) setCardStatus(true, "Connected");
-  else { refreshCardStatus(); clearInterval(state.cardTimer); state.cardTimer = setInterval(refreshCardStatus, 20000); }
-}
+  const warn = $("#card-warn");
+  const advertised = agent.advertised_url || "";
+  const inCodespace = /\.app\.github\.dev$/.test(location.hostname);
+  warn.hidden = !(inCodespace && /^https?:\/\/(localhost|127\.0\.0\.1)/.test(advertised));
+  if (!warn.hidden) {
+    warn.textContent = "The card advertises " + advertised + ", which other callers cannot reach. " +
+      "Set A2A_PUBLIC_URL to this Codespace's port 9000 address in .env, then run: bash scripts/start.sh --restart";
+  }
 
-function setCardStatus(up, text) {
-  $("#card-dot").className = "dotlive " + (up === true ? "up" : up === false ? "down" : "");
-  $("#card-status").textContent = text;
-}
-
-async function refreshCardStatus() {
-  try {
-    const s = await (await fetch("/api/agent-card")).json();
-    const warn = $("#card-warn");
-    warn.hidden = true;
-    if (s.reachable) {
-      setCardStatus(true, `${s.name || "A2A agent"} is running`);
-      const advertised = s.advertised_url || "";
-      if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(advertised) && /\.app\.github\.dev$/.test(location.hostname)) {
-        warn.hidden = false;
-        warn.textContent = "The card still advertises " + advertised + ". Set A2A_PUBLIC_URL to this Codespace's port 9000 address in .env and restart (bash scripts/start.sh --restart).";
-      }
-    } else {
-      setCardStatus(false, "A2A server not running");
-    }
-  } catch {
-    setCardStatus(null, "Status unavailable");
+  const box = $("#tools");
+  box.replaceChildren();
+  const skills = agent.skills || [];
+  $("#skills-sub").textContent = skills.length
+    ? "From the agent card. The tools it calls appear in the chat as they run."
+    : "The agent card lists no skills.";
+  for (const s of skills) {
+    box.append(h("div", { class: "tool skill" },
+      h("div", { class: "n" }, s.name),
+      s.description ? h("div", { class: "d" }, s.description) : null));
   }
 }
 
@@ -540,38 +529,15 @@ async function copyText(text, btn) {
   setTimeout(() => { btn.textContent = old; }, 1400);
 }
 
-function renderTools(tools, kind = "tools") {
-  const box = $("#tools");
-  box.replaceChildren();
-  state.toolEls = {};
-  const skills = kind === "skills";
-  $("#tools-heading").textContent = skills ? "Agent skills" : "Tools discovered";
-  $("#tools-sub").textContent = tools.length
-    ? (skills ? `${tools.length} skills from the agent card. Tool calls appear in the chat as they happen.`
-              : `${tools.length} tools from the MCP server, read when you connected.`)
-    : (skills ? "The agent card lists no skills." : "The server connected but reported no tools.");
-  for (const t of tools) {
-    const toolKind = skills ? "skill" : (t.read_only === true ? "read" : kindOf(t.name));
-    const el = h("div", { class: `tool ${toolKind}` },
-      h("div", { class: "n" }, t.name),
-      t.description ? h("div", { class: "d" }, t.description) : null);
-    state.toolEls[t.name] = el;
-    box.append(el);
-  }
-}
-
 function switchAccount() {
   try { sessionStorage.removeItem(STORE); } catch {}
-  clearInterval(state.cardTimer);
   state.keys = { agent: "", model: "", mcp: "" };
   state.history = [];
-  $("#agent-key").value = "";
-  $("#model-key").value = "";
-  $("#mcp-key").value = "";
+  for (const id of ["agent-key", "mcp-key", "model-key"]) $("#" + id).value = "";
   clearErrors();
   $("#app").hidden = true;
   $("#connect").hidden = false;
-  $("#model-key").focus();
+  $("#agent-key").focus();
 }
 
 /* ---------------- chat ---------------- */
@@ -628,8 +594,6 @@ function addToolCall(ev, ctx) {
   }
   ctx.steps.append(step);
   $("#log").scrollTop = $("#log").scrollHeight;
-  const side = state.toolEls[ev.name];
-  if (side) { side.classList.add("active"); setTimeout(() => side.classList.remove("active"), 1800); }
   return { step, state: stateEl, result, t0: performance.now() };
 }
 
@@ -731,33 +695,11 @@ function autosize() {
 }
 
 /* ---------------- boot ---------------- */
-function configureKeyField(which, mode, hints) {
-  const input = $("#" + which + "-key");
-  $("#" + which + "-hint").textContent = hints[mode] || "";
-  input.disabled = mode === "unused";
-  input.placeholder = mode === "unused" ? "Not used" : (mode === "optional" ? "Using the default" : "");
-}
-
 async function boot() {
   state.cfg = await (await fetch("/api/config")).json();
-  const agentMode = state.cfg.agent_key;
-  $("#agent-field").hidden = agentMode === "none";
-  $("#agent-hint").textContent = agentMode === "required"
-    ? "Required. This server checks every request."
-    : "Optional. Sent as x-api-key to the A2A agent; leave blank to use the server default.";
-  $("#agent-key").placeholder = agentMode === "optional" ? "Using the default" : "";
-  configureKeyField("model", state.cfg.model_key, {
-    unused: "Direct to Anthropic: the server's Anthropic key is used.",
-    required: "Required.",
-    optional: "Leave blank to use the server or agent default.",
-  });
-  configureKeyField("mcp", state.cfg.mcp_key, {
-    required: "Required. Sent as x-api-key to the MCP server.",
-    optional: "Leave blank to use the server or agent default.",
-  });
 
   $("#connect-btn").addEventListener("click", onConnect);
-  for (const id of ["agent-key", "model-key", "mcp-key"])
+  for (const id of ["agent-key", "mcp-key", "model-key"])
     $("#" + id).addEventListener("keydown", (e) => { if (e.key === "Enter") onConnect(); });
   $("#switch-btn").addEventListener("click", switchAccount);
   $("#card-copy").addEventListener("click", () => copyText($("#card-url").textContent, $("#card-copy")));
@@ -774,7 +716,7 @@ async function boot() {
     state.keys = { agent: "", model: "", mcp: "", ...saved };
     try {
       const res = await tryConnect();
-      if (res.ok) return showApp(res);
+      if (res.ok) return showApp(res.agent);
     } catch {}
     state.keys = { agent: "", model: "", mcp: "" };
     try { sessionStorage.removeItem(STORE); } catch {}

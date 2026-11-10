@@ -5,7 +5,8 @@ so it works against any A2A server, including the AgentCore-hosted one. It emits
 same event dicts as agent.run_agent(), which lets the web UI treat both identically.
 
 CLI probe (no web UI):
-    A2A_AGENT_URL=http://localhost:9000/ MCP_API_KEY=... python -m app.a2a_client "Show my watchlist"
+    MCP_API_KEY=... python -m app.a2a_client "Show my watchlist"      (agent on this machine)
+    A2A_AGENT_URL=<url> A2A_AUTH_MODE=sigv4 ... python -m app.a2a_client "..."   (a remote agent)
 Keys are read from the environment: MCP_API_KEY, optionally MODEL_API_KEY, and A2A_API_KEY (the agent's
 x-api-key, needed when the agent sets AGENT_API_KEYS).
 """
@@ -258,13 +259,7 @@ async def stream_chat(
 async def _probe(prompt: str) -> int:
     from .config import load_ui_settings
 
-    # The probe is always an A2A client, whatever AGENT_MODE says in .env, and an empty
-    # A2A_AGENT_URL= line in .env counts as unset.
-    os.environ["AGENT_MODE"] = "a2a"
-    if not os.environ.get("A2A_AGENT_URL"):
-        os.environ["A2A_AGENT_URL"] = "http://localhost:9000/"
-    target = load_ui_settings().target
-    assert target is not None
+    target = load_ui_settings().target  # A2A_AGENT_URL, default http://localhost:9000/
     mcp_key = os.environ.get("MCP_API_KEY") or None
     model_key = os.environ.get("MODEL_API_KEY") or None
 

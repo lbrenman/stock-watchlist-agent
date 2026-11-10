@@ -38,7 +38,7 @@ def model_env(cfg: ModelConfig, user_key: str | None) -> dict[str, str]:
     ANTHROPIC_AUTH_TOKEN is blanked so it can never switch the request to
     an Authorization: Bearer header.
 
-    Direct mode (ANTHROPIC_API_KEY configured on the server): the server's
+    Direct-to-Anthropic route (ANTHROPIC_API_KEY configured on the agent): the agent's
     Anthropic key and the Anthropic API URL are used and any key sent by a caller is ignored.
     """
     if cfg.direct:

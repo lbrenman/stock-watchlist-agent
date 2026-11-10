@@ -62,13 +62,14 @@ def public_url() -> str:
     return f"http://localhost:{port}/"
 
 
-def build_card(auth_required: bool = False) -> AgentCard:
+def build_card(auth_required: bool = False, model_note: str = "") -> AgentCard:
     # Built from the spec's JSON field names so it validates the same way a client would read it.
     card = {
         "name": "Stock Watchlist Agent",
         "description": (
             "Looks up stock quotes and manages a per-account watchlist (view, add, remove, clear) "
             "through tools hosted behind Axway AI Gateway."
+            + (f" Model: {model_note}." if model_note else "")
         ),
         "url": public_url(),
         "version": "0.1.0",
@@ -293,7 +294,9 @@ def main() -> None:
     if builder is not None:
         kwargs["context_builder"] = builder
 
-    app = build_a2a_app(WatchlistExecutor(settings), build_card(auth_required=bool(inbound.keys)), **kwargs)
+    model_note = f"{settings.model.name}, " + ("direct to Anthropic" if settings.model.direct else "through the gateway")
+    card = build_card(auth_required=bool(inbound.keys), model_note=model_note)
+    app = build_a2a_app(WatchlistExecutor(settings), card, **kwargs)
 
     if inbound.keys:
         app.add_middleware(ApiKeyMiddleware, keys=list(inbound.keys))

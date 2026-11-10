@@ -5,7 +5,6 @@
   // Non-sensitive settings only. This file is committed to a public repo.
   // Gateway URLs, model names and keys come from Codespaces secrets (see below) or the UI.
   "containerEnv": {
-    "AGENT_MODE": "direct",
     "MODEL_AUTH_MODE": "api_key",
     "MODEL_DISABLE_BETAS": "1",
     "MCP_TRANSPORT": "http",

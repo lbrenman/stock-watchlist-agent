@@ -109,8 +109,8 @@ def main() -> int:
 
     url = f"https://bedrock-agentcore.{args.region}.amazonaws.com/runtimes/{quote(arn, safe='')}/invocations/"
     auth = "bearer" if args.jwt_discovery_url else "sigv4"
-    print("\nPoint the chat UI (or the probe) at this agent:")
-    print(f"  AGENT_MODE=a2a\n  A2A_AGENT_URL={url}\n  A2A_AUTH_MODE={auth}\n  A2A_REGION={args.region}")
+    print("\nPoint the chat UI (or the CLI probe) at this agent with:")
+    print(f"  A2A_AGENT_URL={url}\n  A2A_AUTH_MODE={auth}\n  A2A_REGION={args.region}\n  A2A_API_KEY=<one of your AGENT_API_KEYS>")
     return 0
 
 

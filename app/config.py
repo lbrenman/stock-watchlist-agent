@@ -36,7 +36,8 @@ def _required(name: str) -> str:
 
 
 def _optional(name: str, default: str = "") -> str:
-    return os.environ.get(name, default).strip()
+    # A variable that is set but blank (e.g. copied from .env.example) counts as unset, so the default applies.
+    return os.environ.get(name, "").strip() or default
 
 
 def _flag(name: str, default: str) -> bool:

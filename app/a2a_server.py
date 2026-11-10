@@ -56,7 +56,7 @@ def public_url() -> str:
         return explicit
     name = os.environ.get("CODESPACE_NAME")
     domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
-    port = os.environ.get("A2A_PORT", "9000")
+    port = os.environ.get("A2A_PORT", "").strip() or "9000"  # blank counts as unset
     if name and domain:
         return f"https://{name}-{port}.{domain}/"
     return f"http://localhost:{port}/"

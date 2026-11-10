@@ -227,8 +227,11 @@ async def stream_chat(
 async def _probe(prompt: str) -> int:
     from .config import load_ui_settings
 
-    os.environ.setdefault("AGENT_MODE", "a2a")
-    os.environ.setdefault("A2A_AGENT_URL", "http://localhost:9000/")
+    # The probe is always an A2A client, whatever AGENT_MODE says in .env, and an empty
+    # A2A_AGENT_URL= line in .env counts as unset.
+    os.environ["AGENT_MODE"] = "a2a"
+    if not os.environ.get("A2A_AGENT_URL"):
+        os.environ["A2A_AGENT_URL"] = "http://localhost:9000/"
     target = load_ui_settings().target
     assert target is not None
     mcp_key = os.environ.get("MCP_API_KEY") or None

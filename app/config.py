@@ -155,3 +155,20 @@ def load_ui_settings() -> UiSettings:
             ),
         )
     raise RuntimeError("AGENT_MODE must be 'direct' or 'a2a'")
+
+
+def local_card_url() -> str:
+    """Where this deployment's own A2A agent card is served (for display in the UI).
+
+    Precedence: AGENTCORE_RUNTIME_URL, then A2A_PUBLIC_URL, then the Codespaces forwarded
+    address for the A2A port, then localhost.
+    """
+    base = _optional("AGENTCORE_RUNTIME_URL") or _optional("A2A_PUBLIC_URL")
+    if not base:
+        port = _optional("A2A_PORT", "9000")
+        name = _optional("CODESPACE_NAME")
+        domain = _optional("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+        base = f"https://{name}-{port}.{domain}/" if name and domain else f"http://localhost:{port}/"
+    if not base.endswith("/"):
+        base += "/"
+    return base + ".well-known/agent-card.json"

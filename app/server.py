@@ -12,17 +12,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
+import httpx
 from fastapi import FastAPI, Header
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import a2a_client
 from .auth import MissingKeyError, UnsupportedAuthMode, a2a_target_auth, mcp_headers, model_env
-from .config import load_ui_settings
+from .config import load_ui_settings, local_card_url
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("server")
@@ -96,7 +98,27 @@ async def get_config() -> dict:
         mcp_key = "optional" if settings.mcp.default_api_key else "required"  # type: ignore[union-attr]
     else:
         model_key = mcp_key = "optional"
-    return {"mode": ui.mode, "model_key": model_key, "mcp_key": mcp_key}
+    # The agent card this UI is showing: our own A2A server's card (direct mode), or the
+    # card of the remote agent the UI is a client of (a2a mode).
+    card_url = a2a_client.card_url(target) if ui.mode == "a2a" else local_card_url()  # type: ignore[arg-type]
+    return {"mode": ui.mode, "model_key": model_key, "mcp_key": mcp_key, "agent_card_url": card_url}
+
+
+@app.get("/api/agent-card")
+async def agent_card_status() -> dict:
+    """Direct mode: is the local A2A server running, and what address does its card advertise?"""
+    if ui.mode == "a2a":
+        return {"reachable": None}
+    port = os.environ.get("A2A_PORT", "").strip() or "9000"
+    try:
+        async with httpx.AsyncClient(timeout=2) as client:
+            resp = await client.get(f"http://127.0.0.1:{port}/.well-known/agent-card.json")
+        if resp.status_code == 200:
+            card = resp.json()
+            return {"reachable": True, "name": card.get("name"), "advertised_url": card.get("url")}
+    except Exception:  # noqa: BLE001 - any failure just means "not reachable"
+        pass
+    return {"reachable": False}
 
 
 @app.post("/api/connect")

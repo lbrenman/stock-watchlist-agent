@@ -1,5 +1,7 @@
 # Stock Watchlist Agent
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/lbrenman/stock-watchlist-agent)
+
 Demo agent on Axway AI Gateway. It talks to two gateway endpoints only (an Anthropic-compatible
 model endpoint and the Fusion Stock Watchlist MCP server), with one optional exception: direct
 Anthropic mode, below. The same agent code runs three ways:
@@ -52,6 +54,11 @@ Open http://localhost:8000, enter the **Model API key** and **MCP API key** (or 
 server-side default), and click Connect.
 
 ## Run in a GitHub Codespace
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/lbrenman/stock-watchlist-agent)
+
+The button creates a Codespace from this repo. Your Codespaces secrets are private to your own account, so anyone else
+who clicks it gets their own Codespace without your keys and must supply their own configuration.
 
 ### One-time setup
 

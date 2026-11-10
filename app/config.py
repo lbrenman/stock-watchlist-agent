@@ -88,7 +88,7 @@ class A2ATarget:
     auth_mode: str  # "none" | "bearer" | "sigv4": how to authenticate to the agent's host
     bearer_token: str | None
     region: str | None  # for sigv4
-    api_key: str | None = None  # default x-api-key to send (the UI field overrides it)
+    api_key: str | None = None  # x-api-key sent when the user has not typed one in the UI
 
 
 @dataclass(frozen=True)
@@ -144,13 +144,16 @@ def load_ui_settings() -> UiSettings:
     if auth_mode not in ("none", "bearer", "sigv4"):
         raise RuntimeError("A2A_AUTH_MODE must be 'none', 'bearer' or 'sigv4'")
     default_url = f"http://localhost:{_optional('A2A_PORT', '9000')}/"
+    # The access key comes from the environment: A2A_API_KEY, else the first AGENT_API_KEYS entry, so a single
+    # .env serves both the agent and the UI. (When the UI runs apart from the agent, set A2A_API_KEY.)
+    first_agent_key = next((k.strip() for k in _optional("AGENT_API_KEYS").split(",") if k.strip()), "")
     return UiSettings(
         target=A2ATarget(
             url=_optional("A2A_AGENT_URL") or default_url,
             auth_mode=auth_mode,
             bearer_token=_optional("A2A_BEARER_TOKEN") or None,
             region=_optional("A2A_REGION") or _optional("AWS_REGION") or None,
-            api_key=_optional("A2A_API_KEY") or None,
+            api_key=_optional("A2A_API_KEY") or first_agent_key or None,
         )
     )
 

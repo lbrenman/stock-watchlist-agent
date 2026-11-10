@@ -20,8 +20,9 @@ Other A2A clients can discover and call the agent through its card.
 Set on the agent:
 
 - **An Anthropic-compatible proxy (default), such as Fusion AI Gateway:** leave `ANTHROPIC_API_KEY` unset. Set
-  `MODEL_BASE_URL` (root, no `/v1/messages`) and `MODEL_NAME`. The proxy key comes from the caller (`X-Model-Key`, which
-  the UI sends from its Model API key field) or from `MODEL_API_KEY`.
+  `MODEL_BASE_URL` (root, no `/v1/messages`), `MODEL_NAME` and `MODEL_API_KEY` (the proxy's key). The chat UI has no model
+  key field, so the key has to be on the agent. A direct caller can still override it per request with an `X-Model-Key`
+  header (the CLI probe sends its `MODEL_API_KEY` environment variable that way).
 - **Direct to Anthropic:** set `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` (an Anthropic model ID, for example
   `claude-haiku-5-5` for a low-cost option). The agent calls Anthropic directly and **bypasses the gateway**. Keys sent
   by callers are ignored. Use it as a dev fallback; leave it unset for gateway demos and AgentCore.
@@ -42,7 +43,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"      # generate a k
 |---|---|
 | `AGENT_API_KEYS` | One key, or several separated by commas (add the new key, move callers over, then remove the old one) |
 | `AGENT_REQUIRE_API_KEY=1` | The agent refuses to start without a key. The Codespaces config sets this. Unset: no keys means open access, with a warning in the log |
-| `A2A_API_KEY` | The key the chat UI and the CLI probe send by default. The UI's Agent API key field overrides it |
+| `A2A_API_KEY` | The key the chat UI server and the CLI probe send. If unset, the first `AGENT_API_KEYS` entry is used, so one `.env` works for both. Set it explicitly when the UI runs apart from the agent. A key typed in the UI's Settings overrides it |
 
 ```bash
 curl -i http://localhost:9000/ -H "Content-Type: application/json" -d '{}'                  # 401 without a key
@@ -53,8 +54,8 @@ A2A_API_KEY=<key> python -m app.a2a_client "Show my watchlist"                  
 The key is compared in constant time, read only from the `x-api-key` header, and never logged. This is a shared-secret
 gate for a demo, not an identity system: no per-key permissions and no rate limiting. Keys live in environment variables,
 so on AgentCore anyone who can read the runtime configuration can read them (use Secrets Manager beyond a demo).
-The chat UI server does not check keys itself; it forwards them to the agent. It can hold saved credentials
-(`A2A_API_KEY`, or a bearer token for AgentCore), so keep its port private.
+The chat UI server does not check keys itself; it forwards them to the agent. It holds the agent key from its own
+environment and uses it for anyone who can open the page, so keep its port private.
 
 ## Quick start (laptop)
 
@@ -65,8 +66,8 @@ cp .env.example .env        # fill in section 1: the model route, MCP_URL, and A
 bash scripts/start.sh       # starts the agent on :9000 and the chat UI on :8000
 ```
 
-Open http://localhost:8000, enter the Agent API key (your `AGENT_API_KEYS` value), optionally an MCP key and a model key
-(blank uses the agent's own defaults), and click Connect.
+Open http://localhost:8000. The UI connects with the key from `.env` and goes straight to the chat. To see another
+account's watchlist, open **Switch account** (top right) and enter that account's MCP API key.
 
 ## Run in a GitHub Codespace
 
@@ -80,7 +81,7 @@ who clicks it gets their own Codespace without your keys and must supply their o
 1. **Push the project to a GitHub repo.** Check with `git status` that `.env` is not listed (it is gitignored).
 2. **Decide where configuration lives.** Either works:
    - *Codespaces secrets* (set once, every new Codespace gets them): GitHub account **Settings > Codespaces >
-     Secrets**, create `MODEL_BASE_URL`, `MODEL_NAME`, `MCP_URL` (proxy route), **`AGENT_API_KEYS`**, and optionally
+     Secrets**, create `MODEL_BASE_URL`, `MODEL_NAME`, `MODEL_API_KEY`, `MCP_URL` (proxy route), **`AGENT_API_KEYS`**, and optionally
      `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` (direct route). Give each access to this repo.
    - *A `.env` file inside the Codespace* (per Codespace, gone when it is deleted): `cp .env.example .env` and edit.
      If the same variable is set both ways, the secret wins.
@@ -106,11 +107,13 @@ who clicks it gets their own Codespace without your keys and must supply their o
 ### Use it
 
 7. **Open the chat UI:** Ports tab > port 8000 > globe icon (Open in Browser). Sign in to GitHub if asked.
-8. **Connect.** Enter the **Agent API key** (your `AGENT_API_KEYS` value). Leave the MCP key blank to use the agent's saved
-   default, or type another to demo another account. Connect checks the agent key without calling the model. The left
-   panel then shows the agent (name, version, description including its model route), its card URL with Copy and Open
-   buttons, and its skills.
-9. **Chat.** Click a suggested prompt (blue = reads data, amber = changes it) or type your own.
+8. **It connects by itself** using `A2A_API_KEY`, or else the first `AGENT_API_KEYS` entry, from the same environment, and
+   opens straight to the chat. You only see the home screen if that connection fails (the message under the form says
+   why). Nothing is typed unless you want another account: **Switch account** opens Settings with the current keys
+   filled in; change the MCP API key there and choose **Save and reconnect**.
+9. **Chat.** Click a suggested prompt (blue = reads data, amber = changes it) or type your own. After the first message the
+   prompts stay available as chips above the message box. Each tool call is one collapsed line; click it for the input and
+   result. The agent panel (top left button) shows the agent, its card URL, and its skills, and opens only when you ask.
 
 ### Check the agent directly
 
@@ -155,9 +158,10 @@ automatically when it resumes.
 |---|---|
 | Neither process starts after updating the repo | `AGENT_API_KEYS` is not set but the Codespaces config requires it. Add the secret or `.env` line, then `bash scripts/start.sh --restart`. |
 | Ports tab has no 8000 or 9000 | The process did not start. `bash scripts/start.sh` prints the reason, or `tail /tmp/a2a.log /tmp/uvicorn.log`. |
-| Connect says it could not reach the agent | The agent is not running, or `A2A_AGENT_URL` points somewhere else. Run `bash scripts/start.sh`. |
-| Connect says the agent rejected the Agent API key | Enter the value of `AGENT_API_KEYS` (any one of the comma-separated keys), or set `A2A_API_KEY`. |
-| The first message fails with an MCP or model error | Wrong or missing MCP or model key, or the wrong `MCP_TRANSPORT` (try `sse`). The UI cannot check these at Connect. |
+| The home screen appears instead of the chat | The UI could not connect with the key from `.env` (or the saved one). The message under the form says why; usually the agent is not running (`bash scripts/start.sh`) or `A2A_AGENT_URL` points elsewhere. |
+| The agent rejected the Agent API key | The UI sends `A2A_API_KEY`, else the first `AGENT_API_KEYS` entry from its own environment. Open Settings and enter any valid key to override it. |
+| An old key keeps coming back | Keys are saved on the device. Settings > **Forget saved keys**, or turn off **Remember on this device**. |
+| The first message fails with an MCP or model error | Wrong or missing MCP key or proxy key, or the wrong `MCP_TRANSPORT` (try `sse`). The UI cannot check these in advance. For the proxy route, set `MODEL_API_KEY` on the agent. |
 | Card advertises `localhost` | Set `A2A_PUBLIC_URL` as above and restart. |
 | An old `.env` has `AGENT_MODE` | It is ignored now; delete the line. The agent always runs as its own process. |
 
@@ -182,14 +186,28 @@ A2A_API_KEY=<key> python -m app.a2a_client "Show my watchlist"          # CLI pr
 
 ## The chat UI
 
-A client for the agent: it fetches the card, forwards your keys as headers, streams the agent's tool calls and answer,
-and renders answers as markdown (tables with aligned numbers and green and red changes). To reach a remote agent, set
-`A2A_AGENT_URL`, and `A2A_AUTH_MODE` (`bearer` + `A2A_BEARER_TOKEN`, or `sigv4` + `A2A_REGION` with AWS credentials in
-the environment) to get past the host's own authentication.
+A client for the agent: it fetches the card, forwards your keys as headers, streams the agent's tool calls and answer, and
+renders answers as markdown (tables with aligned numbers and green and red changes).
 
-Because it only talks to the agent, it cannot see the MCP server: the sidebar lists the agent card's skills, not the MCP
-tools, and a wrong MCP or model key shows up on the first message rather than at Connect (the agent key is checked at
-Connect).
+- **Keys:** the agent key comes from the UI server's environment (`A2A_API_KEY`, else the first `AGENT_API_KEYS` entry), so
+  there is nothing to type. The UI has no model key field; the proxy key lives on the agent (`MODEL_API_KEY`).
+- **Connects on load** with the saved keys or the server's own key, and shows the home screen only when that fails.
+- **Switch account / Settings:** a sheet with the Agent API key and the MCP API key (which account's watchlist),
+  pre-filled with the keys currently in use. **Remember on this device** saves them in the browser's local storage, in plain
+  text, so they are filled in on the next launch; **Forget saved keys** removes them. Do not use that switch on a shared computer.
+- **Agent panel:** the button at the top left shows or hides it (open by default on a desktop, closed on a phone, remembered
+  per device). It never opens by itself.
+- **Tool calls** appear as one collapsed line each (name, a short input summary, status, time). Open one to see the full input
+  and result; a failed call opens itself.
+- **Prompts** stay pinned as chips above the message box once a chat has started.
+- **Phones:** the layout uses the full screen height without hiding behind Safari's toolbar or the notch, inputs are sized so
+  iOS does not zoom, tables scroll sideways, and on a touch screen Return adds a line (the arrow button sends).
+
+To reach a remote agent, set `A2A_AGENT_URL`, and `A2A_AUTH_MODE` (`bearer` + `A2A_BEARER_TOKEN`, or `sigv4` + `A2A_REGION`
+with AWS credentials in the environment) to get past the host's own authentication.
+
+Because it only talks to the agent, it cannot see the MCP server: the panel lists the agent card's skills, not the MCP tools,
+and a wrong MCP key shows up on the first message rather than when connecting (the agent key is checked on connect).
 
 ## Docker
 
@@ -197,7 +215,7 @@ Connect).
 docker build -f Dockerfile.agentcore -t stock-watchlist-agent .          # the agent (ARM64-ready, port 9000)
 docker run --rm -p 9000:9000 --env-file .env stock-watchlist-agent
 docker build -t stock-watchlist-ui .                                     # the chat UI (light image, port 8000)
-docker run --rm -p 8000:8000 -e A2A_AGENT_URL=http://host.docker.internal:9000/ stock-watchlist-ui
+docker run --rm -p 8000:8000 -e A2A_AGENT_URL=http://host.docker.internal:9000/ -e A2A_API_KEY=<agent-key> stock-watchlist-ui
 ```
 
 `requirements.txt` is for the agent (and laptop or Codespace use of both); `requirements-ui.txt` is the UI-only subset.
@@ -249,16 +267,20 @@ python deploy/agentcore_deploy.py --image <image-uri> --role-arn <execution-role
 Tested by hand in a GitHub Codespace on an earlier version, direct Anthropic route: the agent card is served; the CLI probe
 reads and writes the watchlist over A2A with streamed tool calls; the chat UI worked.
 
-Tested in a sandbox without the real SDKs: the key verification and middleware (valid, wrong, missing and multiple keys;
-`/ping` and the card staying open; no key echoed back), the config rules, the client's key handling, the web server's
-Connect and chat handlers, and `scripts/start.sh` (start, no-op rerun, partial recovery, restart, crash reporting,
-overlapping starts).
+Tested in a sandbox without the real SDKs or a browser: the key verification and middleware, the config rules, the client's
+key handling, the agent's options and event stream, the web server's Connect and chat handlers, `scripts/start.sh`, and the
+UI's real script run against a fake DOM (connect on load, key from the environment, saved keys, the settings sheet, switching
+accounts, the collapsible panel, collapsed tool steps, pinned prompts, Enter handling, viewport sizing).
 
-Not yet verified:
+**Not yet verified, and needs your eyes on a real screen** (a fake DOM cannot show layout):
 
-- **This simplified version end to end.** The agent now starts through `build_a2a_app` + the key middleware + uvicorn, and the
-  UI no longer has a direct mode. Check on first run that `/ping`, the card and JSON-RPC all answer, the card shows the right
-  address, and the UI connects, chats, and shows tool-call cards.
+- **The UI on a desktop browser:** colors, spacing, the panel collapsing, tables, light and dark mode.
+- **The UI on an iPhone (Safari):** the page fits without scrolling sideways; the top bar and message box clear the notch and the
+  home indicator; focusing the message box does not zoom the page and the keyboard does not cover it; the settings sheet slides up
+  from the bottom and its fields are usable; the agent panel slides in over the chat and a tap outside closes it; prompt chips
+  scroll sideways; tables scroll sideways.
+- **This simplified agent end to end.** It starts through `build_a2a_app` + the key middleware + uvicorn. Check that `/ping`, the card
+  and JSON-RPC all answer, and that the card shows the right address.
 - **Per-request key headers (`X-Mcp-Key`, `X-Model-Key`):** that they override the agent's defaults. Test with a wrong
   `MCP_API_KEY` on the probe: it should fail. If it prints a watchlist, the header is being ignored.
 - **`X-Api-Key` on AgentCore:** that the runtime forwards it to the container once allowlisted. The middleware reads the raw

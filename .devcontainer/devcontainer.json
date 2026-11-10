@@ -25,6 +25,9 @@
     "MODEL_NAME": {
       "description": "Gateway route: model name accepted by the gateway's model endpoint."
     },
+    "MODEL_API_KEY": {
+      "description": "Proxy route: key for the gateway's model endpoint. Required, because the chat UI has no model key field."
+    },
     "MCP_URL": {
       "description": "Gateway URL of the Fusion Stock Watchlist MCP server."
     },

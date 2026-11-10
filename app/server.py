@@ -6,10 +6,10 @@ and relays the streamed tool calls and answer to the browser.
 
 Keys arrive per request in headers and are forwarded to the agent; nothing is stored between
 requests and keys are never logged:
-    X-Api-Key     the agent's access key (the agent checks it; Connect verifies it)
-    X-Mcp-Key     decides whose watchlist this is
-    X-Model-Key   the agent's gateway key (ignored by an agent that calls Anthropic directly)
-A blank key means "use the agent's own default" (and A2A_API_KEY, for the access key, if set here).
+    X-Api-Key     the agent's access key (the agent checks it; Connect verifies it).
+                  Blank means the key from this server's environment (A2A_API_KEY, else the first AGENT_API_KEYS).
+    X-Mcp-Key     decides whose watchlist this is; blank means the agent's default
+The model key is never set from the UI: it belongs to the agent's own configuration.
 """
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ async def healthz() -> dict[str, str]:
 
 @app.get("/api/config")
 async def get_config() -> dict:
-    """Non-secret settings the UI needs."""
-    return {"agent_card_url": a2a_client.card_url(target)}
+    """Non-secret settings the UI needs. The key itself is never sent to the browser, only whether one exists."""
+    return {"agent_card_url": a2a_client.card_url(target), "key_from_env": bool(target.api_key)}
 
 
 @app.post("/api/connect")
@@ -91,7 +91,6 @@ async def api_connect(
 @app.post("/api/chat")
 async def api_chat(
     req: ChatRequest,
-    x_model_key: str | None = Header(default=None),
     x_mcp_key: str | None = Header(default=None),
     x_session_id: str | None = Header(default=None),
     x_api_key: str | None = Header(default=None),
@@ -104,7 +103,7 @@ async def api_chat(
         return JSONResponse({"errors": {"config": str(exc)}}, status_code=500)
 
     messages = [m.model_dump() for m in req.messages]
-    events = a2a_client.stream_chat(target, messages, x_model_key, x_mcp_key, x_session_id, x_api_key)
+    events = a2a_client.stream_chat(target, messages, None, x_mcp_key, x_session_id, x_api_key)
 
     async def stream():
         async for event in events:

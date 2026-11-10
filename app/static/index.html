@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f4f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a111d" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Stock Watchlist Agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,110 +31,118 @@
     --soft: #f6f8fb;
     --brand-bg: #0d1b2a;
     --brand-ink: #e8eef7;
+    --app-h: 100vh;
     --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
+  @supports (height: 100dvh) { :root { --app-h: 100dvh; } }
   @media (prefers-color-scheme: dark) {
     :root {
-      --canvas: #0a111d;
-      --panel: #111a2a;
-      --ink: #e8eef7;
-      --ink-2: #b4c0d1;
-      --muted: #8190a5;
-      --line: #1e2a3d;
-      --line-strong: #2b3a52;
-      --primary: #e8eef7;
-      --primary-ink: #0a111d;
-      --read: #7aa7ff;
-      --write: #f0a24b;
-      --gain: #3dd598;
-      --loss: #ff7b72;
-      --soft: #0e1625;
-      --brand-bg: #0a111d;
-      --brand-ink: #e8eef7;
+      --canvas: #0a111d; --panel: #111a2a; --ink: #e8eef7; --ink-2: #b4c0d1; --muted: #8190a5;
+      --line: #1e2a3d; --line-strong: #2b3a52; --primary: #e8eef7; --primary-ink: #0a111d;
+      --read: #7aa7ff; --write: #f0a24b; --gain: #3dd598; --loss: #ff7b72; --soft: #0e1625;
+      --brand-bg: #0a111d; --brand-ink: #e8eef7;
     }
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body { margin: 0; background: var(--canvas); color: var(--ink); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  html { -webkit-text-size-adjust: 100%; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--canvas); color: var(--ink); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; overscroll-behavior-y: none; }
   [hidden] { display: none !important; }
   button, input, textarea { font: inherit; color: inherit; }
-  button { cursor: pointer; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid var(--read); outline-offset: 2px; }
   svg { display: block; }
+  .screen { height: var(--app-h); }
 
   /* ---------- buttons ---------- */
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 10px;
-         padding: 9px 16px; font-weight: 600; background: var(--primary); color: var(--primary-ink); transition: opacity .15s, background-color .15s; }
+         padding: 9px 16px; font-weight: 600; background: var(--primary); color: var(--primary-ink); transition: opacity .15s, background-color .15s; text-decoration: none; }
   .btn:hover { opacity: .9; }
   .btn:disabled { opacity: .45; cursor: default; }
   .btn.quiet { background: transparent; color: var(--ink); border-color: var(--line-strong); font-weight: 500; padding: 7px 13px; }
   .btn.quiet:hover { background: var(--soft); opacity: 1; }
   .btn.tiny { padding: 4px 10px; border-radius: 8px; font-size: 12.5px; }
+  .icon-btn { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 10px; display: inline-grid; place-items: center; color: var(--ink); flex: none; }
+  .icon-btn:hover { background: var(--soft); }
 
-  /* ---------- connect screen ---------- */
-  .connect { min-height: 100%; display: grid; grid-template-columns: minmax(320px, 5fr) minmax(360px, 6fr); }
-  .brand { background: var(--brand-bg); color: var(--brand-ink); padding: clamp(28px, 5vw, 64px); display: flex; flex-direction: column; justify-content: space-between; gap: 32px; overflow: hidden; }
-  .brand .mark { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -0.01em; }
+  /* ---------- splash ---------- */
+  .splash { display: grid; place-items: center; align-content: center; gap: 14px; color: var(--muted); }
+  .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--read); animation: spin .8s linear infinite; }
+  .splash .spin { width: 22px; height: 22px; border-width: 3px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- home / connect screen ---------- */
+  .connect { display: grid; grid-template-columns: minmax(320px, 5fr) minmax(360px, 6fr); overflow: auto; }
+  .brand { background: var(--brand-bg); color: var(--brand-ink); padding: clamp(28px, 5vw, 64px); padding-top: max(clamp(28px, 5vw, 64px), env(safe-area-inset-top)); display: flex; flex-direction: column; justify-content: space-between; gap: 32px; overflow: hidden; }
+  .brand .mark { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; font-weight: 600; letter-spacing: -0.01em; font-size: 17px; }
+  .gw-tag { font-size: 12px; font-weight: 500; padding: 3px 10px; border: 1px solid color-mix(in srgb, var(--brand-ink) 40%, transparent); border-radius: 999px; color: color-mix(in srgb, var(--brand-ink) 88%, transparent); white-space: nowrap; letter-spacing: 0; }
   .brand h2 { margin: 0 0 12px; font-size: clamp(28px, 3.4vw, 42px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 600; max-width: 14ch; }
   .brand p { margin: 0; color: color-mix(in srgb, var(--brand-ink) 72%, transparent); max-width: 38ch; font-size: 16px; }
   .brand svg.art { width: 100%; height: auto; max-height: 220px; }
-  .form-side { display: grid; place-items: center; padding: 28px; }
+  .form-side { display: grid; place-items: center; padding: 28px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
   .panel { width: min(430px, 100%); }
   .panel h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.02em; font-weight: 600; }
-  .panel > p { margin: 0 0 24px; color: var(--ink-2); }
+  .panel > p { margin: 0 0 8px; color: var(--ink-2); }
+  #home-connect { margin-top: 24px; width: 100%; padding: 13px 16px; }
+  #home-error { margin-top: 14px; }
+
+  /* ---------- key form (home screen and settings sheet) ---------- */
   label { display: block; font-weight: 600; margin: 18px 0 6px; font-size: 14px; }
-  input[type=password], input[type=text] { width: 100%; padding: 11px 13px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel); font-family: var(--mono); font-size: 13.5px; }
-  input:disabled { background: var(--soft); color: var(--muted); }
+  label.check { display: flex; align-items: center; gap: 10px; font-weight: 500; margin: 20px 0 0; }
+  label.check input { width: 18px; height: 18px; accent-color: var(--primary); margin: 0; }
+  .pwd { position: relative; }
+  input[type=password], input[type=text] { width: 100%; padding: 11px 64px 11px 13px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel); font-family: var(--mono); font-size: 13.5px; }
+  .reveal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted); font-size: 12.5px; padding: 8px 10px; border-radius: 8px; }
+  .reveal:hover { color: var(--ink); background: var(--soft); }
   .hint { color: var(--muted); font-size: 13px; margin-top: 5px; }
   .field-error { color: var(--loss); font-size: 13px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
-  #connect-btn { margin-top: 26px; width: 100%; padding: 12px 16px; }
-  #connect-error { margin-top: 14px; }
+  .field-error:empty { display: none; }
 
   /* ---------- app shell ---------- */
-  .app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
-  .top { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
-  .top .logo { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -0.01em; font-size: 16px; }
+  .app { display: grid; grid-template-rows: auto 1fr; position: relative; overflow: hidden; }
+  .top { display: flex; align-items: center; gap: 8px; padding: 8px 14px; padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); background: var(--panel); border-bottom: 1px solid var(--line); }
+  .title-wrap { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; margin-left: 4px; }
+  .title-wrap .t1 { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title-wrap .t2 { font-size: 12px; color: var(--muted); white-space: nowrap; }
   .top .spacer { flex: 1; }
-  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); font-size: 13px; color: var(--ink-2); max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); font-size: 13px; color: var(--ink-2); white-space: nowrap; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
   .pill b { font-family: var(--mono); font-weight: 500; color: var(--ink); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+  button.pill:hover { background: var(--panel); border-color: var(--line-strong); }
   .body { display: grid; grid-template-columns: 320px 1fr; min-height: 0; }
 
   /* ---------- side panel ---------- */
-  .side { background: var(--panel); border-right: 1px solid var(--line); padding: 20px; overflow: auto; display: flex; flex-direction: column; gap: 22px; }
+  .side { background: var(--panel); border-right: 1px solid var(--line); padding: 20px; overflow: auto; display: flex; flex-direction: column; gap: 22px; -webkit-overflow-scrolling: touch; }
   .side h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
-  .agent-name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
-  .agent-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-  .agent-desc { color: var(--ink-2); font-size: 13.5px; margin: 8px 0 0; }
   .card-box { border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 12px; }
-  .card-status { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
-  .dotlive { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
-  .dotlive.up { background: var(--gain); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gain) 22%, transparent); }
-  .dotlive.down { background: var(--loss); }
+  .card-status { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .dotlive { width: 8px; height: 8px; border-radius: 50%; background: var(--gain); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--gain) 22%, transparent); }
+  .agent-sub { color: var(--muted); font-size: 12.5px; }
+  .agent-desc { color: var(--ink-2); font-size: 13.5px; margin: 8px 0 0; }
   .url { font-family: var(--mono); font-size: 12px; color: var(--ink); word-break: break-all; line-height: 1.45; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 5.4em; overflow: auto; }
   .card-actions { display: flex; gap: 8px; margin-top: 10px; }
-  .card-note { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
   .card-warn { color: var(--write); font-size: 12.5px; margin-top: 10px; }
-  .tool { padding: 9px 11px 9px 13px; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 10px; margin-bottom: 8px; background: var(--panel); transition: background-color .4s, border-color .4s; }
-  .tool.read { border-left-color: var(--read); }
-  .tool.write { border-left-color: var(--write); }
-  .tool.skill { border-left-color: var(--ink); }
-  .tool.active { background: color-mix(in srgb, var(--read) 10%, var(--panel)); }
-  .tool.write.active { background: color-mix(in srgb, var(--write) 11%, var(--panel)); }
+  .tool { padding: 9px 11px 9px 13px; border: 1px solid var(--line); border-left: 3px solid var(--ink); border-radius: 10px; margin-bottom: 8px; background: var(--panel); }
   .tool .n { font-family: var(--mono); font-size: 12.5px; font-weight: 500; word-break: break-all; }
   .tool .d { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
   .sub { color: var(--muted); font-size: 12.5px; margin: -2px 0 10px; }
+  .scrim { display: none; }
+
+  /* desktop: the panel collapses out of the grid */
+  @media (min-width: 861px) {
+    .app.side-closed .body { grid-template-columns: 0 1fr; }
+    .app.side-closed .side { display: none; }
+  }
 
   /* ---------- chat ---------- */
-  .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
-  #log { overflow: auto; padding: 28px clamp(16px, 5vw, 64px) 12px; scroll-behavior: smooth; }
-  .col { max-width: 780px; margin: 0 auto; }
+  .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; min-width: 0; }
+  #log { overflow: auto; padding: 24px clamp(14px, 5vw, 64px) 12px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   .row { margin: 0 auto 16px; max-width: 780px; }
   .msg-user { display: flex; justify-content: flex-end; }
-  .msg-user .bubble { background: var(--primary); color: var(--primary-ink); padding: 10px 16px; border-radius: 18px 18px 4px 18px; max-width: 80%; white-space: pre-wrap; font-weight: 500; }
+  .msg-user .bubble { background: var(--primary); color: var(--primary-ink); padding: 10px 16px; border-radius: 18px 18px 4px 18px; max-width: 85%; white-space: pre-wrap; word-break: break-word; font-weight: 500; }
   .msg-agent { display: flex; gap: 12px; align-items: flex-start; }
   .avatar { flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--primary); color: var(--primary-ink); display: grid; place-items: center; margin-top: 1px; }
-  .msg-agent .content { min-width: 0; flex: 1; }
+  .msg-agent .content { min-width: 0; flex: 1; overflow-wrap: anywhere; }
   .err { color: var(--loss); border: 1px solid color-mix(in srgb, var(--loss) 45%, transparent); background: color-mix(in srgb, var(--loss) 7%, var(--panel)); border-radius: 12px; padding: 10px 14px; white-space: pre-wrap; word-break: break-word; }
   .foot { color: var(--muted); font-size: 12.5px; padding-left: 42px; }
 
@@ -140,7 +153,7 @@
   .md h3, .md h4, .md h5, .md h6 { margin: 14px 0 6px; letter-spacing: -0.01em; }
   .md ul, .md ol { margin: 0 0 10px; padding-left: 22px; }
   .md code { font-family: var(--mono); font-size: 12.5px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
-  .tablewrap { overflow-x: auto; margin: 8px 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .tablewrap { overflow-x: auto; margin: 8px 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); -webkit-overflow-scrolling: touch; }
   .md table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
   .md th { text-align: left; font-weight: 600; font-size: 12.5px; color: var(--muted); padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--soft); white-space: nowrap; }
   .md td { padding: 9px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -150,27 +163,27 @@
   .md td.gain { color: var(--gain); font-weight: 500; }
   .md td.loss { color: var(--loss); font-weight: 500; }
 
-  /* tool timeline */
+  /* tool timeline: collapsed by default, one line per call */
   .steps { margin: 2px 0 2px 14px; padding-left: 20px; border-left: 2px solid var(--line-strong); }
   .step { position: relative; margin: 0 0 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
   .step::before { content: ""; position: absolute; left: -28px; top: 15px; width: 10px; height: 10px; border-radius: 50%; background: var(--panel); border: 2px solid var(--line-strong); }
   .step.read::before { border-color: var(--read); }
   .step.write::before { border-color: var(--write); }
   .step.run::before { background: currentColor; }
-  .step summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 9px; padding: 8px 12px; min-height: 40px; }
+  .step summary { list-style: none; cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; padding: 8px 12px; min-height: 40px; }
   .step summary::-webkit-details-marker { display: none; }
+  .step summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin-left: 2px; flex: none; transition: transform .15s; }
+  .step[open] summary::after { transform: rotate(-135deg); }
   .step .sname { font-family: var(--mono); font-size: 13px; font-weight: 600; }
   .step.read .sname { color: var(--read); }
   .step.write .sname { color: var(--write); }
   .chip { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); }
-  .step .args { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .step .args { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 80px; }
   .step .state { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
   .step.error { border-color: color-mix(in srgb, var(--loss) 50%, transparent); }
   .step.error .state { color: var(--loss); }
   .step.ok .state { color: var(--gain); }
-  .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--read); animation: spin .8s linear infinite; }
   .step.write .spin { border-top-color: var(--write); }
-  @keyframes spin { to { transform: rotate(360deg); } }
   .sbody { padding: 0 12px 12px; }
   .cap { font-size: 12px; color: var(--muted); margin: 8px 0 4px; font-weight: 600; }
   .step pre { margin: 0; padding: 9px 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 var(--mono); overflow: auto; max-height: 240px; white-space: pre-wrap; word-break: break-word; }
@@ -182,44 +195,88 @@
   @keyframes blink { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
 
   /* empty state */
-  .empty { max-width: 780px; margin: 5vh auto 0; }
+  .empty { max-width: 780px; margin: 4vh auto 0; }
   .empty h2 { margin: 0 0 6px; font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.025em; font-weight: 600; }
   .empty p { margin: 0 0 22px; color: var(--ink-2); max-width: 52ch; }
   .prompts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-  .prompt { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; font-weight: 500; transition: border-color .15s, transform .15s; }
-  .prompt:hover { border-color: var(--line-strong); transform: translateY(-1px); }
-  .prompt .k { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 8px; }
-  .prompt.read .k { background: var(--read); }
-  .prompt.write .k { background: var(--write); }
+  .prompt { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 13px 14px; display: flex; gap: 10px; align-items: flex-start; font-weight: 500; transition: border-color .15s; }
+  .prompt:hover { border-color: var(--line-strong); }
+  .k { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 8px; }
+  .read > .k { background: var(--read); }
+  .write > .k { background: var(--write); }
 
-  /* composer */
-  #composer { padding: 6px clamp(16px, 5vw, 64px) 22px; }
-  .composer-inner { max-width: 780px; margin: 0 auto; display: flex; align-items: flex-end; gap: 10px; padding: 8px 8px 8px 16px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 16px; box-shadow: 0 6px 24px -12px rgba(13, 27, 42, .25); }
+  /* composer: prompt chips stay pinned above the box once a chat has started */
+  #composer { padding: 6px clamp(14px, 5vw, 64px) 14px; padding-bottom: max(14px, env(safe-area-inset-bottom)); padding-left: max(clamp(14px, 5vw, 64px), env(safe-area-inset-left)); padding-right: max(clamp(14px, 5vw, 64px), env(safe-area-inset-right)); }
+  .composer-wrap { max-width: 780px; margin: 0 auto; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip-btn { flex: none; border: 1px solid var(--line-strong); background: var(--panel); border-radius: 999px; padding: 8px 14px; font-size: 13.5px; display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; }
+  .chip-btn .k { margin: 0; width: 7px; height: 7px; }
+  .chip-btn:hover { background: var(--soft); }
+  .composer-inner { display: flex; align-items: flex-end; gap: 10px; padding: 8px 8px 8px 16px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 16px; box-shadow: 0 6px 24px -12px rgba(13, 27, 42, .25); }
   .composer-inner:focus-within { border-color: var(--read); }
-  textarea { flex: 1; resize: none; max-height: 140px; border: 0; outline: 0; background: transparent; padding: 8px 0; line-height: 1.45; }
-  #send-btn { width: 38px; height: 38px; padding: 0; border-radius: 11px; }
+  textarea { flex: 1; resize: none; max-height: 140px; border: 0; outline: 0; background: transparent; padding: 8px 0; line-height: 1.45; min-width: 0; }
+  #send-btn { width: 40px; height: 40px; padding: 0; border-radius: 11px; flex: none; }
 
+  /* ---------- settings sheet ---------- */
+  .modal-scrim { position: fixed; inset: 0; background: rgba(8, 14, 24, .5); z-index: 40; }
+  .sheet { position: fixed; z-index: 41; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px)); max-height: calc(var(--app-h) - 32px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .45); }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; }
+  .sheet-head h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+  .sheet-sub { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+  .sheet-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 22px; }
+  .sheet-actions .spacer { flex: 1; }
+  #settings-msg { margin-top: 12px; }
+
+  /* ---------- phones ---------- */
   @media (max-width: 860px) {
     .connect { grid-template-columns: 1fr; }
-    .brand { gap: 20px; padding: 24px; }
-    .brand svg.art { max-height: 120px; }
-    .body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-    .side { border-right: 0; border-bottom: 1px solid var(--line); max-height: 34vh; }
-    .pill { max-width: 36vw; }
+    .brand { gap: 20px; padding: 24px; padding-top: max(24px, env(safe-area-inset-top)); }
+    .brand svg.art { max-height: 110px; }
+    .brand h2 { max-width: none; }
+    .form-side { padding: 20px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+    .body { grid-template-columns: 1fr; }
+    .side { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; width: min(88vw, 340px); border-right: 1px solid var(--line);
+            padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(20px, env(safe-area-inset-bottom));
+            transform: translateX(-104%); transition: transform .22s ease; box-shadow: 8px 0 30px -12px rgba(0, 0, 0, .35); }
+    .app.side-open .side { transform: none; }
+    .scrim { position: fixed; inset: 0; z-index: 25; background: rgba(8, 14, 24, .45); }
+    .app.side-open .scrim { display: block; }
+    .pill { display: none; }
+    .btn.label-hide span { display: none; }
+    .icon-btn, .btn.quiet.tapsize { min-width: 44px; min-height: 44px; }
+    input[type=password], input[type=text], textarea { font-size: 16px; }   /* 16px stops iOS Safari zooming on focus */
+    .btn, .chip-btn, .prompt { min-height: 44px; }
+    #log { padding-top: 16px; }
+    .msg-user .bubble { max-width: 92%; }
+    .avatar { width: 26px; height: 26px; border-radius: 8px; }
+    .msg-agent { gap: 10px; }
+    .foot { padding-left: 36px; }
+    .steps { margin-left: 8px; padding-left: 16px; }
+    .step::before { left: -24px; }
+    .empty { margin-top: 1vh; }
+    .sheet { top: auto; bottom: 0; left: 0; transform: none; width: 100%; max-height: 90%; border-radius: 18px 18px 0 0; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
   }
   @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    * { animation: none !important; transition: none !important; }
   }
 </style>
 </head>
 <body>
 
-<!-- ================= connect ================= -->
-<section id="connect" class="connect">
+<!-- ================= splash while the first connection is attempted ================= -->
+<section id="splash" class="screen splash">
+  <div class="spin" aria-hidden="true"></div>
+  <div>Connecting to the agent</div>
+</section>
+
+<!-- ================= home / connect ================= -->
+<section id="connect" class="screen connect" hidden>
   <div class="brand">
     <div class="mark">
       <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><rect width="28" height="28" rx="8" fill="#e8eef7"/><path d="M6 19l5-5 4 3 7-8" stroke="#0d1b2a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Stock Watchlist Agent
+      <span>Stock Watchlist Agent</span>
+      <span class="gw-tag">Amplify AI Gateway</span>
     </div>
     <svg class="art" viewBox="0 0 520 220" fill="none" aria-hidden="true">
       <g stroke="#e8eef7" stroke-opacity=".10"><path d="M0 40h520M0 90h520M0 140h520M0 190h520"/></g>
@@ -236,54 +293,45 @@
   </div>
   <div class="form-side">
     <div class="panel">
-      <h1>Connect an account</h1>
-      <p>Each MCP API key has its own watchlist. Use a different key to demo another account.</p>
-
-      <label for="agent-key">Agent API key</label>
-      <input id="agent-key" type="password" autocomplete="off" spellcheck="false">
-      <div class="hint">Needed when the agent sets AGENT_API_KEYS. Sent as x-api-key.</div>
-      <div class="field-error" id="agent-error"></div>
-
-      <label for="mcp-key">MCP API key</label>
-      <input id="mcp-key" type="password" autocomplete="off" spellcheck="false">
-      <div class="hint">Decides whose watchlist you see. Leave blank to use the agent's default.</div>
-      <div class="field-error" id="mcp-error"></div>
-
-      <label for="model-key">Model API key</label>
-      <input id="model-key" type="password" autocomplete="off" spellcheck="false">
-      <div class="hint">Optional. Leave blank to use the agent's own model setting.</div>
-      <div class="field-error" id="model-error"></div>
-
-      <button class="btn" id="connect-btn" type="button">Connect</button>
-      <div class="field-error" id="connect-error"></div>
+      <h1>Connect</h1>
+      <p>Each MCP API key has its own watchlist. Use a different key to see another account.</p>
+      <div id="home-form"></div>
+      <button class="btn" id="home-connect" type="button">Connect</button>
+      <div class="field-error" id="home-error"></div>
     </div>
   </div>
 </section>
 
 <!-- ================= app ================= -->
-<section id="app" class="app" hidden>
+<section id="app" class="screen app side-closed" hidden>
   <header class="top">
-    <div class="logo">
-      <svg width="26" height="26" viewBox="0 0 28 28" fill="none" aria-hidden="true"><rect width="28" height="28" rx="8" fill="currentColor"/><path d="M6 19l5-5 4 3 7-8" stroke="var(--panel)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Stock Watchlist Agent
+    <button class="icon-btn" id="side-toggle" type="button" aria-label="Show or hide the agent panel" aria-expanded="false" aria-controls="side">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 5v14" stroke="currentColor" stroke-width="1.8"/></svg>
+    </button>
+    <div class="title-wrap">
+      <span class="t1">Stock Watchlist Agent</span>
+      <span class="t2">Amplify AI Gateway</span>
     </div>
     <div class="spacer"></div>
-    <span class="pill">Account <b id="account"></b></span>
-    <button class="btn quiet" id="switch-btn" type="button">Switch account</button>
+    <button class="pill" id="account-pill" type="button" title="Open settings">Account <b id="account"></b></button>
+    <button class="btn quiet label-hide tapsize" id="settings-open" type="button" aria-label="Switch account or change settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>Switch account</span>
+    </button>
   </header>
   <div class="body">
-    <aside class="side">
+    <aside class="side" id="side">
       <section>
         <h3>Agent</h3>
         <div class="card-box">
-          <div class="card-status"><span class="dotlive up"></span><span id="agent-title"></span></div>
+          <div class="card-status"><span class="dotlive"></span><span id="agent-title"></span></div>
           <div class="agent-sub" id="agent-version"></div>
           <p class="agent-desc" id="agent-desc"></p>
           <h3 style="margin-top:14px">Agent card</h3>
           <div class="url" id="card-url"></div>
           <div class="card-actions">
             <button class="btn quiet tiny" id="card-copy" type="button">Copy</button>
-            <a class="btn quiet tiny" id="card-open" target="_blank" rel="noopener" style="text-decoration:none">Open</a>
+            <a class="btn quiet tiny" id="card-open" target="_blank" rel="noopener">Open</a>
           </div>
           <div class="card-warn" id="card-warn" hidden></div>
         </div>
@@ -294,27 +342,56 @@
         <div id="tools"></div>
       </section>
     </aside>
+    <div class="scrim" id="side-scrim"></div>
     <main class="chat">
       <div id="log"></div>
       <form id="composer">
-        <div class="composer-inner">
-          <textarea id="input" rows="1" placeholder="Ask for a quote or change the watchlist" aria-label="Message"></textarea>
-          <button class="btn" id="send-btn" type="submit" aria-label="Send">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
+        <div class="composer-wrap">
+          <div class="chips" id="chips" hidden></div>
+          <div class="composer-inner">
+            <textarea id="input" rows="1" placeholder="Ask for a quote or change the watchlist" aria-label="Message" enterkeyhint="send"></textarea>
+            <button class="btn" id="send-btn" type="submit" aria-label="Send">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
         </div>
       </form>
     </main>
   </div>
 </section>
 
+<!-- ================= settings sheet ================= -->
+<div class="modal-scrim" id="settings-scrim" hidden></div>
+<div class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+  <div class="sheet-head">
+    <h2 id="settings-title">Settings</h2>
+    <button class="icon-btn" id="settings-close" type="button" aria-label="Close settings">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <p class="sheet-sub">Change the keys to switch accounts. The MCP key decides whose watchlist you see.</p>
+  <div id="settings-form"></div>
+  <div class="sheet-actions">
+    <button class="btn quiet" id="settings-forget" type="button">Forget saved keys</button>
+    <span class="spacer"></span>
+    <button class="btn quiet" id="settings-cancel" type="button">Cancel</button>
+    <button class="btn" id="settings-save" type="button">Save and reconnect</button>
+  </div>
+  <div class="hint" id="settings-msg"></div>
+</div>
+
 <script>
 const $ = (s) => document.querySelector(s);
-const STORE = "swa.keys";
+const SETTINGS_KEY = "swa.settings";   // saved keys (plain text, on this device only)
+const REMEMBER_KEY = "swa.remember";   // "0" = the user turned remembering off
+const SIDE_KEY = "swa.side";           // "open" | "closed", the agent panel
 const state = {
-  keys: { agent: "", model: "", mcp: "" }, history: [], busy: false, cfg: null,
+  keys: { agent: "", mcp: "" }, remember: true, history: [], busy: false, cfg: null, connected: false, sideOpen: false,
   sessionId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2) + "-session-id"),
 };
+const isMobile = window.matchMedia("(max-width: 860px)");
+const isTouch = window.matchMedia("(pointer: coarse)");
+let homeForm, sheetForm;
 
 const SUGGESTIONS = [
   { text: "What is the quote for AAPL?", kind: "read" },
@@ -340,12 +417,11 @@ function h(tag, props = {}, ...kids) {
   return el;
 }
 
-function authHeaders(json = false) {
+function authHeaders(json = false, keys = state.keys) {
   const hd = {};
   if (json) hd["Content-Type"] = "application/json";
-  if (state.keys.agent) hd["X-Api-Key"] = state.keys.agent;
-  if (state.keys.mcp) hd["X-Mcp-Key"] = state.keys.mcp;
-  if (state.keys.model) hd["X-Model-Key"] = state.keys.model;
+  if (keys.agent) hd["X-Api-Key"] = keys.agent;   // blank: the server uses the key from its environment
+  if (keys.mcp) hd["X-Mcp-Key"] = keys.mcp;
   hd["X-Session-Id"] = state.sessionId;
   return hd;
 }
@@ -429,52 +505,167 @@ function md(text) {
   return root;
 }
 
-/* ---------------- connect ---------------- */
-function clearErrors() {
-  for (const id of ["agent-error", "model-error", "mcp-error", "connect-error"]) $("#" + id).textContent = "";
+/* ---------------- saved settings ---------------- */
+function loadSaved() {
+  let remember = true;
+  try { remember = localStorage.getItem(REMEMBER_KEY) !== "0"; } catch {}
+  try {
+    const v = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
+    if (v && typeof v === "object") return { agent: v.agent || "", mcp: v.mcp || "", remember };
+  } catch {}
+  return { agent: "", mcp: "", remember };
 }
 
-async function tryConnect() {
-  const r = await fetch("/api/connect", { method: "POST", headers: authHeaders() });
+function persist() {
+  try {
+    localStorage.setItem(REMEMBER_KEY, state.remember ? "1" : "0");
+    if (state.remember) localStorage.setItem(SETTINGS_KEY, JSON.stringify({ agent: state.keys.agent, mcp: state.keys.mcp }));
+    else localStorage.removeItem(SETTINGS_KEY);
+  } catch {}
+}
+
+/* ---------------- the key form (home screen and settings sheet share it) ---------------- */
+function mountForm(container, idp) {
+  const refs = {};
+  const field = (name, label, hint) => {
+    const input = h("input", { id: `${idp}-${name}`, type: "password", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+    const reveal = h("button", { class: "reveal", type: "button", "aria-label": `Show or hide ${label}` }, "Show");
+    reveal.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      reveal.textContent = show ? "Hide" : "Show";
+    });
+    const error = h("div", { class: "field-error" });
+    container.append(h("label", { for: `${idp}-${name}` }, label), h("div", { class: "pwd" }, input, reveal), h("div", { class: "hint" }, hint), error);
+    refs[name] = input;
+    refs[name + "Error"] = error;
+  };
+  field("agent", "Agent API key", state.cfg.key_from_env
+    ? "This server already has a key configured, so you can leave this blank."
+    : "Needed when the agent sets AGENT_API_KEYS. Leave blank if it does not.");
+  field("mcp", "MCP API key", "Decides whose watchlist you see. Leave blank to use the agent's default.");
+  const remember = h("input", { type: "checkbox", id: `${idp}-remember` });
+  container.append(h("label", { class: "check", for: `${idp}-remember` }, remember, "Remember on this device"));
+  refs.remember = remember;
+  return refs;
+}
+
+function fillForm(refs) {
+  refs.agent.value = state.keys.agent;
+  refs.mcp.value = state.keys.mcp;
+  refs.remember.checked = state.remember;
+  clearFormErrors(refs);
+}
+function readForm(refs) {
+  return { keys: { agent: refs.agent.value.trim(), mcp: refs.mcp.value.trim() }, remember: refs.remember.checked };
+}
+function clearFormErrors(refs) { refs.agentError.textContent = ""; refs.mcpError.textContent = ""; }
+
+/* ---------------- connecting ---------------- */
+async function tryConnect(keys) {
+  const r = await fetch("/api/connect", { method: "POST", headers: authHeaders(false, keys) });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) return { ok: false, errors: body.errors || { connect: `Request failed (${r.status})` } };
   return { ok: true, agent: body };
 }
 
-async function onConnect() {
-  clearErrors();
-  state.keys = { agent: $("#agent-key").value.trim(), model: $("#model-key").value.trim(), mcp: $("#mcp-key").value.trim() };
-  const btn = $("#connect-btn");
-  btn.disabled = true;
-  btn.textContent = "Connecting";
-  try {
-    const res = await tryConnect();
-    if (!res.ok) {
-      const e = res.errors;
-      $("#agent-error").textContent = e.agent || "";
-      $("#connect-error").textContent = e.connect || e.config || "";
-      return;
-    }
-    try { sessionStorage.setItem(STORE, JSON.stringify(state.keys)); } catch {}
-    showApp(res.agent);
-  } catch (err) {
-    $("#connect-error").textContent = `Could not reach the backend: ${err.message}`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Connect";
-  }
+async function connectSafely(keys) {
+  try { return await tryConnect(keys); }
+  catch (err) { return { ok: false, errors: { connect: `Could not reach the backend: ${err.message}` } }; }
 }
 
-function showApp(agent) {
-  $("#connect").hidden = true;
-  $("#app").hidden = false;
+function showScreen(which) {
+  $("#splash").hidden = which !== "splash";
+  $("#connect").hidden = which !== "connect";
+  $("#app").hidden = which !== "app";
+}
+
+function enterApp(agent, { reset }) {
+  state.connected = true;
+  showScreen("app");
   $("#account").textContent = state.keys.mcp ? "key ending " + state.keys.mcp.slice(-4) : "agent default";
   renderAgent(agent);
-  resetChat();
-  $("#input").focus();
+  applySide();
+  if (reset) resetChat();
+  if (!isTouch.matches) $("#input").focus();
+}
+
+async function submitHome() {
+  const { keys, remember } = readForm(homeForm);
+  clearFormErrors(homeForm);
+  $("#home-error").textContent = "";
+  const btn = $("#home-connect");
+  btn.disabled = true;
+  btn.textContent = "Connecting";
+  const res = await connectSafely(keys);
+  btn.disabled = false;
+  btn.textContent = "Connect";
+  if (!res.ok) {
+    homeForm.agentError.textContent = res.errors.agent || "";
+    $("#home-error").textContent = res.errors.connect || res.errors.config || "";
+    return;
+  }
+  state.keys = keys;
+  state.remember = remember;
+  persist();
+  enterApp(res.agent, { reset: true });
+}
+
+/* ---------------- settings sheet ---------------- */
+function openSettings() {
+  fillForm(sheetForm);
+  $("#settings-msg").textContent = "";
+  $("#settings-scrim").hidden = false;
+  $("#settings").hidden = false;
+  if (!isTouch.matches) sheetForm.agent.focus();
+}
+function closeSettings() {
+  $("#settings-scrim").hidden = true;
+  $("#settings").hidden = true;
+}
+
+async function saveSettings() {
+  const { keys, remember } = readForm(sheetForm);
+  clearFormErrors(sheetForm);
+  const msg = $("#settings-msg");
+  msg.textContent = "";
+  const btn = $("#settings-save");
+  btn.disabled = true;
+  btn.textContent = "Connecting";
+  const res = await connectSafely(keys);
+  btn.disabled = false;
+  btn.textContent = "Save and reconnect";
+  if (!res.ok) {
+    sheetForm.agentError.textContent = res.errors.agent || "";
+    msg.textContent = res.errors.connect || res.errors.config || "";
+    return;
+  }
+  const accountChanged = keys.mcp !== state.keys.mcp;
+  state.keys = keys;
+  state.remember = remember;
+  persist();
+  closeSettings();
+  enterApp(res.agent, { reset: accountChanged });   // a different account starts a fresh chat
+}
+
+function forgetSaved() {
+  try { localStorage.removeItem(SETTINGS_KEY); } catch {}
+  $("#settings-msg").textContent = "Saved keys removed from this device. This page keeps working until you reload.";
 }
 
 /* ---------------- agent panel ---------------- */
+function applySide() {
+  const app = $("#app");
+  app.classList.toggle("side-open", state.sideOpen);
+  app.classList.toggle("side-closed", !state.sideOpen);
+  $("#side-toggle").setAttribute("aria-expanded", String(state.sideOpen));
+}
+function toggleSide() {
+  state.sideOpen = !state.sideOpen;
+  try { localStorage.setItem(SIDE_KEY, state.sideOpen ? "open" : "closed"); } catch {}
+  applySide();
+}
+
 // In a Codespace, a card URL that says localhost is shown as the forwarded address instead.
 function displayCardUrl(url) {
   try {
@@ -510,7 +701,7 @@ function renderAgent(agent) {
     ? "From the agent card. The tools it calls appear in the chat as they run."
     : "The agent card lists no skills.";
   for (const s of skills) {
-    box.append(h("div", { class: "tool skill" },
+    box.append(h("div", { class: "tool" },
       h("div", { class: "n" }, s.name),
       s.description ? h("div", { class: "d" }, s.description) : null));
   }
@@ -529,17 +720,6 @@ async function copyText(text, btn) {
   setTimeout(() => { btn.textContent = old; }, 1400);
 }
 
-function switchAccount() {
-  try { sessionStorage.removeItem(STORE); } catch {}
-  state.keys = { agent: "", model: "", mcp: "" };
-  state.history = [];
-  for (const id of ["agent-key", "mcp-key", "model-key"]) $("#" + id).value = "";
-  clearErrors();
-  $("#app").hidden = true;
-  $("#connect").hidden = false;
-  $("#agent-key").focus();
-}
-
 /* ---------------- chat ---------------- */
 const AVATAR = '<svg width="16" height="16" viewBox="0 0 28 28" fill="none"><path d="M6 19l5-5 4 3 7-8" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -549,8 +729,15 @@ function avatar() {
   return a;
 }
 
+function renderChips() {
+  $("#chips").replaceChildren(...SUGGESTIONS.map((s) =>
+    h("button", { class: `chip-btn ${s.kind}`, type: "button", onclick: () => send(s.text) },
+      h("span", { class: "k" }), s.text)));
+}
+
 function resetChat() {
   state.history = [];
+  $("#chips").hidden = true;
   $("#log").replaceChildren(
     h("div", { class: "empty", id: "empty" },
       h("h2", {}, "Ask about a quote, or change the watchlist"),
@@ -577,7 +764,8 @@ function addToolCall(ev, ctx) {
   const kind = kindOf(ev.name);
   const stateEl = h("span", { class: "state" }, h("i", { class: "spin" }), "running");
   const result = h("pre", {}, "waiting for result");
-  const step = h("details", { class: `step ${kind} run`, open: true },
+  // Collapsed: one line per call. The user opens a step to see its input and result.
+  const step = h("details", { class: `step ${kind} run` },
     h("summary", {},
       h("span", { class: "sname" }, ev.name),
       h("span", { class: "chip" }, kind),
@@ -614,6 +802,7 @@ async function send(text) {
   $("#send-btn").disabled = true;
   $("#input").value = "";
   autosize();
+  $("#chips").hidden = false;   // the prompts stay one tap away, pinned above the message box
 
   state.history.push({ role: "user", content: text });
   addRow(h("div", { class: "msg-user" }, h("div", { class: "bubble" }, text)));
@@ -655,7 +844,7 @@ async function send(text) {
     if (ctx.said.length) state.history.push({ role: "assistant", content: ctx.said.join("\n\n") });
     state.busy = false;
     $("#send-btn").disabled = false;
-    $("#input").focus();
+    if (!isTouch.matches) $("#input").focus();
   }
 }
 
@@ -675,6 +864,7 @@ function handle(ev, ctx) {
     c.result.textContent = pretty(ev.content) || "(empty result)";
     c.step.classList.remove("run");
     c.step.classList.add(ev.is_error ? "error" : "ok");
+    if (ev.is_error) c.step.open = true;   // a failure is worth showing; successes stay collapsed
     c.state.replaceChildren(document.createTextNode(ev.is_error ? `error, ${ms} ms` : `${ms} ms`));
     setThinking(ctx, true);
   } else if (ev.type === "error") {
@@ -694,33 +884,83 @@ function autosize() {
   ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
 }
 
+/* ---------------- iPhone: follow the visible viewport (the keyboard shrinks it) ---------------- */
+function setupViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const fit = () => document.documentElement.style.setProperty("--app-h", vv.height + "px");
+  vv.addEventListener("resize", () => {
+    fit();
+    window.scrollTo(0, 0);
+    const log = $("#log");
+    if (log) log.scrollTop = log.scrollHeight;
+  });
+  fit();
+}
+
 /* ---------------- boot ---------------- */
 async function boot() {
-  state.cfg = await (await fetch("/api/config")).json();
+  setupViewport();
 
-  $("#connect-btn").addEventListener("click", onConnect);
-  for (const id of ["agent-key", "mcp-key", "model-key"])
-    $("#" + id).addEventListener("keydown", (e) => { if (e.key === "Enter") onConnect(); });
-  $("#switch-btn").addEventListener("click", switchAccount);
+  try { state.cfg = await (await fetch("/api/config")).json(); }
+  catch (err) {
+    state.cfg = { agent_card_url: "", key_from_env: false };
+    showScreen("connect");
+    homeForm = mountForm($("#home-form"), "h");
+    $("#home-error").textContent = `Could not reach the backend: ${err.message}`;
+    return wire();
+  }
+  homeForm = mountForm($("#home-form"), "h");
+  sheetForm = mountForm($("#settings-form"), "s");
+  wire();
+
+  const saved = loadSaved();
+  state.keys = { agent: saved.agent, mcp: saved.mcp };
+  state.remember = saved.remember;
+  let side = null;
+  try { side = localStorage.getItem(SIDE_KEY); } catch {}
+  state.sideOpen = side ? side === "open" : !isMobile.matches;
+
+  // Connect on load with whatever is saved (or the server's own key). Only ask when that fails.
+  const res = await connectSafely(state.keys);
+  if (res.ok) return enterApp(res.agent, { reset: true });
+
+  fillForm(homeForm);
+  showScreen("connect");
+  const e = res.errors;
+  const justNeedsAKey = e.agent && !state.keys.agent && !state.cfg.key_from_env;   // first visit: a prompt, not an error
+  homeForm.agentError.textContent = justNeedsAKey ? "" : (e.agent || "");
+  $("#home-error").textContent = e.connect || e.config || "";
+  if (!isTouch.matches) homeForm.agent.focus();
+}
+
+function wire() {
+  $("#home-connect").addEventListener("click", submitHome);
+  for (const refs of [homeForm, sheetForm].filter(Boolean))
+    for (const input of [refs.agent, refs.mcp])
+      input.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        (refs === homeForm ? submitHome : saveSettings)();
+      });
+  $("#settings-open").addEventListener("click", openSettings);
+  $("#account-pill").addEventListener("click", openSettings);
+  $("#settings-close").addEventListener("click", closeSettings);
+  $("#settings-cancel").addEventListener("click", closeSettings);
+  $("#settings-scrim").addEventListener("click", closeSettings);
+  $("#settings-save").addEventListener("click", saveSettings);
+  $("#settings-forget").addEventListener("click", forgetSaved);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#settings").hidden) closeSettings(); });
+  $("#side-toggle").addEventListener("click", toggleSide);
+  $("#side-scrim").addEventListener("click", toggleSide);
   $("#card-copy").addEventListener("click", () => copyText($("#card-url").textContent, $("#card-copy")));
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
   $("#input").addEventListener("input", autosize);
   $("#input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("#input").value); }
+    // Enter sends with a keyboard; on a touch screen Return adds a line and the arrow button sends.
+    if (e.key === "Enter" && !e.shiftKey && !isTouch.matches) { e.preventDefault(); send($("#input").value); }
   });
-
-  // Restore this tab's keys after a reload.
-  let saved = null;
-  try { saved = JSON.parse(sessionStorage.getItem(STORE) || "null"); } catch {}
-  if (saved) {
-    state.keys = { agent: "", model: "", mcp: "", ...saved };
-    try {
-      const res = await tryConnect();
-      if (res.ok) return showApp(res.agent);
-    } catch {}
-    state.keys = { agent: "", model: "", mcp: "" };
-    try { sessionStorage.removeItem(STORE); } catch {}
-  }
+  renderChips();
 }
 boot();
 </script>

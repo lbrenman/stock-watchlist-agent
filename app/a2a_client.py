@@ -6,7 +6,8 @@ same event dicts as agent.run_agent(), which lets the web UI treat both identica
 
 CLI probe (no web UI):
     A2A_AGENT_URL=http://localhost:9000/ MCP_API_KEY=... python -m app.a2a_client "Show my watchlist"
-Keys are read from MCP_API_KEY and (optionally) MODEL_API_KEY in the environment.
+Keys are read from the environment: MCP_API_KEY, optionally MODEL_API_KEY, and A2A_API_KEY (the agent's
+x-api-key, needed when the agent sets AGENT_API_KEYS).
 """
 from __future__ import annotations
 
@@ -47,6 +48,7 @@ def _headers(
     session_id: str | None,
     *,
     sse: bool,
+    agent_key: str | None = None,
 ) -> tuple[dict[str, str], Any]:
     extra, auth = a2a_target_auth(target)
     headers = {
@@ -60,6 +62,9 @@ def _headers(
         headers["X-Mcp-Key"] = mcp_key
     if model_key:
         headers["X-Model-Key"] = model_key
+    key = (agent_key or "").strip() or target.api_key
+    if key:
+        headers["x-api-key"] = key
     return headers, auth
 
 
@@ -68,8 +73,10 @@ def card_url(target: A2ATarget) -> str:
     return base + ".well-known/agent-card.json"
 
 
-async def fetch_card(target: A2ATarget, session_id: str | None = None) -> dict[str, Any]:
-    headers, auth = _headers(target, None, None, session_id, sse=False)
+async def fetch_card(
+    target: A2ATarget, session_id: str | None = None, agent_key: str | None = None
+) -> dict[str, Any]:
+    headers, auth = _headers(target, None, None, session_id, sse=False, agent_key=agent_key)
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(card_url(target), headers=headers, auth=auth)
@@ -81,6 +88,29 @@ async def fetch_card(target: A2ATarget, session_id: str | None = None) -> dict[s
         return resp.json()
     except ValueError as exc:
         raise A2AError("The agent card is not valid JSON.") from exc
+
+
+async def check_agent_key(
+    target: A2ATarget, agent_key: str | None = None, session_id: str | None = None
+) -> None:
+    """Check the agent accepts our x-api-key without invoking the model.
+
+    Sends a JSON-RPC tasks/get for a task that does not exist. An agent that accepts the key answers with
+    a JSON-RPC error (task not found); one that rejects it answers HTTP 401. Only 401/403 count as a
+    rejection, anything else means the key was not the problem.
+    """
+    headers, auth = _headers(target, None, None, session_id, sse=False, agent_key=agent_key)
+    headers["Content-Type"] = "application/json"
+    payload = {"jsonrpc": "2.0", "id": uuid.uuid4().hex, "method": "tasks/get", "params": {"id": "connect-check"}}
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(target.url, json=payload, headers=headers, auth=auth)
+    except httpx.HTTPError as exc:
+        raise A2AError(f"Could not reach the agent: {type(exc).__name__}: {exc}") from exc
+    if resp.status_code == 401:
+        raise A2AError("The agent rejected the Agent API key (HTTP 401).")
+    if resp.status_code == 403:
+        raise A2AError("The agent refused the request (HTTP 403). Check the key and your AWS or token credentials.")
 
 
 def _parts(message: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -171,8 +201,9 @@ async def stream_chat(
     model_key: str | None,
     mcp_key: str | None,
     session_id: str | None = None,
+    agent_key: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    secrets = [k for k in (model_key, mcp_key, target.bearer_token) if k]
+    secrets = [k for k in (model_key, mcp_key, agent_key, target.api_key, target.bearer_token) if k]
     *history, last = messages
     parts: list[dict[str, Any]] = []
     if history:
@@ -187,7 +218,7 @@ async def stream_chat(
 
     state: dict[str, Any] = {"t0": time.monotonic()}
     try:
-        headers, auth = _headers(target, model_key, mcp_key, session_id, sse=True)
+        headers, auth = _headers(target, model_key, mcp_key, session_id, sse=True, agent_key=agent_key)
         async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=15)) as client:
             async with client.stream("POST", target.url, json=payload, headers=headers, auth=auth) as resp:
                 if resp.status_code != 200:

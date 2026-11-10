@@ -31,27 +31,59 @@ A2A mode:      Browser -> UI server -> A2A agent (separate process) -> model + M
 | Where the agent runs | Inside the UI server, one process | In a separate A2A agent (port 9000, or AgentCore) |
 | What the UI server does | Calls the model and MCP tools itself | Sends your message and keys to the A2A agent and shows what comes back |
 | Sidebar | The MCP server's tools | The skills from the agent card |
-| Wrong keys | Caught when you click Connect | Only found when you send a message |
+| Wrong keys | Caught when you click Connect | MCP and model keys only when you send a message; the Agent API key at Connect |
+| Agent API key | Checked by the UI server | Forwarded to the A2A agent, which checks it |
 | Model key field | Greyed out in direct Anthropic mode | Optional (blank = the agent's own setting) |
 | Footer under an answer | Model turns and seconds | Seconds only |
 | Needs | Model and MCP settings in the UI server's env | `A2A_AGENT_URL` (the agent holds the model and MCP settings) |
 
-**Use direct mode** for everyday demos: one process, and Connect checks both keys and lists the tools.
+**Use direct mode** for everyday demos: one process, and Connect checks every key and lists the tools.
 **Use A2A mode** to show A2A itself, or when the agent is deployed elsewhere (AgentCore is only reachable over A2A).
 Other A2A clients can discover and call the agent through its card; direct mode keeps the agent hidden inside the web app.
+
+## Securing the agent: x-api-key
+
+Set `AGENT_API_KEYS` and callers must send `x-api-key: <key>`:
+
+- **A2A agent (port 9000):** every call needs the key except the agent card and `/ping` (AgentCore's health check).
+  Missing or wrong key gives HTTP 401.
+- **Chat UI server in direct mode (port 8000):** `/api/connect` and `/api/chat` need it. The connect screen
+  shows an **Agent API key** field when the server requires one.
+- **Chat UI in A2A mode:** the UI does not check the key itself. It forwards the field's value (or `A2A_API_KEY`)
+  to the remote agent, and Connect verifies it without calling the model.
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"      # generate a key
+```
+
+| Variable | Meaning |
+|---|---|
+| `AGENT_API_KEYS` | One key, or several separated by commas (add the new key, move callers over, then remove the old one) |
+| `AGENT_REQUIRE_API_KEY=1` | Refuse to start without a key. The Codespaces config sets this. Unset: no keys means open access, with a warning in the log |
+| `A2A_API_KEY` | The key the UI (in A2A mode) and the CLI probe send to the agent |
+
+```bash
+curl -i http://localhost:9000/ -H "Content-Type: application/json" -d '{}'                  # 401 without a key
+curl -s http://localhost:9000/.well-known/agent-card.json | head -c 200                      # card is open
+A2A_API_KEY=<key> AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/ python -m app.a2a_client "Show my watchlist"
+```
+
+The key is compared in constant time, read only from the `x-api-key` header, and never logged. This is a shared-secret
+gate for a demo, not a full identity system: no per-key permissions, no rate limiting. Keys live in environment variables,
+so on AgentCore anyone who can read the runtime configuration can read them (use Secrets Manager beyond a demo).
 
 ## Quick start (laptop)
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # fill in the gateway route (or ANTHROPIC_API_KEY), and MCP_URL
-uvicorn app.server:app --port 8000            # chat UI, direct mode
-python -m app.a2a_server                      # optional, in a second terminal: the A2A agent on :9000
+cp .env.example .env        # fill in the gateway route (or ANTHROPIC_API_KEY), MCP_URL, and AGENT_API_KEYS
+bash scripts/start.sh       # starts the chat UI on :8000 and the A2A agent on :9000
 ```
 
-Open http://localhost:8000, enter the **Model API key** and **MCP API key** (or leave a field blank to use a
-server-side default), and click Connect.
+(Or run them yourself: `uvicorn app.server:app --port 8000` and `python -m app.a2a_server`.)
+Open http://localhost:8000, enter the keys the form asks for (leave a field blank to use a server-side default),
+and click Connect.
 
 ## Run in a GitHub Codespace
 
@@ -65,58 +97,64 @@ who clicks it gets their own Codespace without your keys and must supply their o
 1. **Push the project to a GitHub repo.** Check with `git status` that `.env` is not listed (it is gitignored).
 2. **Decide where configuration lives.** Either works:
    - *Codespaces secrets* (set once, every new Codespace gets them): GitHub account **Settings > Codespaces >
-     Secrets**, create `MODEL_BASE_URL`, `MODEL_NAME`, `MCP_URL` (gateway route), and optionally
+     Secrets**, create `MODEL_BASE_URL`, `MODEL_NAME`, `MCP_URL` (gateway route), **`AGENT_API_KEYS`**, and optionally
      `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` (direct route). Give each access to this repo.
    - *A `.env` file inside the Codespace* (per Codespace, gone when it is deleted): `cp .env.example .env` and edit.
      If the same variable is set both ways, the secret wins.
+3. **`AGENT_API_KEYS` is required in Codespaces.** The dev container sets `AGENT_REQUIRE_API_KEY=1`, so both processes
+   refuse to start until a key exists. Generate one with the command in "Securing the agent".
 
 ### Start it
 
-3. **Create the Codespace:** repo page > **Code > Codespaces > Create codespace on main**. Wait for the build.
-4. **Two processes start by themselves**: the chat UI on port 8000 and the A2A agent on port 9000. Confirm:
+4. **Create the Codespace:** repo page > **Code > Codespaces > Create codespace on main**. Wait for the build.
+5. **Two processes start by themselves** (the chat UI on 8000, the A2A agent on 9000) through `scripts/start.sh`,
+   which runs when the Codespace starts and again each time you open it. It only starts what is not already running,
+   so if one crashed, reopening the Codespace brings it back. It prints whether each came up, and the log tail if not:
    ```bash
-   pgrep -af "uvicorn|a2a_server"      # should list both
-   tail -n 5 /tmp/uvicorn.log /tmp/a2a.log
+   bash scripts/start.sh               # start whatever is not running, and report
+   pgrep -af "uvicorn|a2a_server"      # list the processes
+   tail -n 20 /tmp/uvicorn.log /tmp/a2a.log
    ```
-   `/tmp/uvicorn.log` should say `Mode: direct` and the model route. If a process is missing, the log says why;
-   the usual cause is a missing setting (the apps refuse to start without a model route and `MCP_URL`).
-   If you set up `.env` after the Codespace started, restart them (see "Restart" below).
-5. **Make the ports private** before anything else, because your saved keys act as defaults for anyone who can open
+   `/tmp/uvicorn.log` should say `Mode: direct`, the model route, and that `x-api-key` is required.
+6. **Make the ports private** before anything else, because your saved keys act as defaults for anyone who can open
    a port: bottom panel **Ports** tab > right-click 8000 and 9000 > **Port Visibility > Private**.
-   (Private is the default; if a port shows a globe icon it is public.)
+   (Private is the default; a globe icon means public.)
 
 ### Use it
 
-6. **Open the chat UI:** Ports tab > port 8000 > globe icon (Open in Browser). Sign in to GitHub if asked.
-7. **Connect.** Direct Anthropic mode greys out the model key field. Leave the MCP key blank to use the saved default,
-   or type another key to demo another account. After Connect you see the six MCP tools, and the
-   **Agent card** panel on the left shows the A2A agent's card URL with Copy and Open buttons and a live status dot.
-8. **Chat.** Click a suggested prompt (blue = reads data, amber = changes it) or type your own.
+7. **Open the chat UI:** Ports tab > port 8000 > globe icon (Open in Browser). Sign in to GitHub if asked.
+8. **Connect.** Enter the **Agent API key** (your `AGENT_API_KEYS` value). Direct Anthropic mode greys out the model key
+   field. Leave the MCP key blank to use the saved default, or type another to demo another account. After Connect you
+   see the six MCP tools, and the **Agent card** panel on the left shows the A2A agent's card URL with Copy and Open
+   buttons and a live status dot.
+9. **Chat.** Click a suggested prompt (blue = reads data, amber = changes it) or type your own.
 
 ### Check the A2A agent
 
-9. **Agent card:**
-   ```bash
-   curl -s http://localhost:9000/.well-known/agent-card.json | grep -o '"url":"[^"]*"'
-   ```
-   If this prints `http://localhost:9000/`, the SDK overwrote the card address (see "Fix the card address").
-10. **Send a message over A2A** (the probe needs these two variables because `.env` says `AGENT_MODE=direct`):
+10. **Agent card** (open, no key needed):
     ```bash
-    AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/ python -m app.a2a_client "Show my watchlist"
+    curl -s http://localhost:9000/.well-known/agent-card.json | grep -o '"url":"[^"]*"'
+    ```
+    This should print your forwarded `-9000` address. If it prints `http://localhost:9000/`, set `A2A_PUBLIC_URL`
+    (see "Fix the card address").
+11. **Send a message over A2A.** The probe needs the mode and URL on the command line because `.env` says
+    `AGENT_MODE=direct`, plus the agent key:
+    ```bash
+    A2A_API_KEY=<your-agent-key> AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/ python -m app.a2a_client "Show my watchlist"
     ```
     You should see `>` lines for tool calls, `<` lines for results, then the answer.
 
 ### Fix the card address
 
-The AgentCore SDK rewrites the card's `url` to its own local address unless `AGENTCORE_RUNTIME_URL` is set.
-In `.env` add (note `-9000`, the A2A port; your Codespace name is the first part of the URL in your browser):
+Codespaces fills in the card address from `CODESPACE_NAME`. If the card still says `localhost`, set it yourself in `.env`
+(your Codespace name is the first part of the URL in your browser; note `-9000`, the A2A port):
 
 ```
-AGENTCORE_RUNTIME_URL=https://<codespace-name>-9000.app.github.dev/
+A2A_PUBLIC_URL=https://<codespace-name>-9000.app.github.dev/
 ```
 
-then restart the A2A server. The address changes if you create a new Codespace. The UI's Agent card panel warns
-when the card still advertises `localhost`.
+then `bash scripts/start.sh --restart`. The address changes if you create a new Codespace. The UI's Agent card panel
+warns when the card still advertises `localhost`.
 
 ### Run the UI as an A2A client
 
@@ -125,33 +163,35 @@ pkill -f "uvicorn app.server"
 AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/ nohup uvicorn app.server:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
 ```
 
-Reload the page and Connect: the sidebar now lists skills and the header says `... via A2A`. To go back to direct mode,
-repeat without the two variables. Do not `export` them: an exported `AGENT_MODE=a2a` makes the next UI restart start in A2A mode.
+Reload the page and Connect (enter the Agent API key, or set `A2A_API_KEY`): the sidebar now lists skills and the header
+says `... via A2A`. To go back to direct mode, run `bash scripts/start.sh --restart`. Do not `export` `AGENT_MODE`:
+an exported `AGENT_MODE=a2a` makes the next UI start come up in A2A mode.
 
 ### Restart (after editing `.env` or a secret)
 
-Secrets are read when the Codespace starts, and `.env` when each process starts. Restart both processes:
+Secrets are read when the Codespace starts, and `.env` when each process starts:
 
 ```bash
-pkill -f "uvicorn app.server"; pkill -f "app.a2a_server"
-nohup uvicorn app.server:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
-nohup python -m app.a2a_server > /tmp/a2a.log 2>&1 &
+bash scripts/start.sh --restart       # stop both, start both, report
 ```
 
-Or restart the Codespace. Stopping a Codespace (Code > Codespaces menu) pauses it and keeps its files; deleting it removes
-`.env` and logs. Both processes start again automatically when it resumes.
+Stopping a Codespace pauses it and keeps its files; deleting it removes `.env` and logs. Both processes start again
+automatically when it resumes.
 
 ### Troubleshooting
 
 | Symptom | Likely cause and fix |
 |---|---|
-| Ports tab has no 8000 or 9000 | The process did not start. `tail /tmp/uvicorn.log /tmp/a2a.log` for the missing setting. |
-| Page loads but Connect shows an MCP error | Wrong or missing MCP key, or the wrong `MCP_TRANSPORT` (try `sse`). |
+| Neither app starts after updating the repo | `AGENT_API_KEYS` is not set but the Codespaces config requires it. Add the secret or `.env` line, then `bash scripts/start.sh --restart`. |
+| Ports tab has no 8000 or 9000 | The process did not start. `bash scripts/start.sh` prints the reason, or `tail /tmp/uvicorn.log /tmp/a2a.log`. |
+| Connect says the Agent API key is missing or wrong | Enter the value of `AGENT_API_KEYS` (any one of the comma-separated keys). |
+| A2A calls return HTTP 401 | Missing or wrong `x-api-key`. Pass `A2A_API_KEY` to the probe, or the UI's Agent API key field. |
+| Connect shows an MCP error | Wrong or missing MCP key, or the wrong `MCP_TRANSPORT` (try `sse`). |
 | Connect shows a model error | Bad model key, or an unknown model name for the route in use. |
-| Agent card panel says "A2A server not running" | Start it: `nohup python -m app.a2a_server > /tmp/a2a.log 2>&1 &`. |
-| Card advertises `localhost` | Set `AGENTCORE_RUNTIME_URL` as above and restart the A2A server. |
+| Agent card panel says "A2A server not running" | `bash scripts/start.sh`. |
+| Card advertises `localhost` | Set `A2A_PUBLIC_URL` as above and restart. |
 | Probe fails with `Missing required environment variable: A2A_AGENT_URL` | Pass `AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/` on the command line. |
-| UI starts in the wrong mode | An exported `AGENT_MODE` is set. `unset AGENT_MODE A2A_AGENT_URL`, then restart the UI. |
+| UI starts in the wrong mode | An exported `AGENT_MODE` is set. `unset AGENT_MODE A2A_AGENT_URL`, then `bash scripts/start.sh --restart`. |
 
 ## Model route: gateway or direct Anthropic
 
@@ -169,19 +209,22 @@ Or restart the Codespace. Stopping a Codespace (Code > Codespaces menu) pauses i
 ```bash
 python -m app.a2a_server
 curl http://localhost:9000/.well-known/agent-card.json
-AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/ python -m app.a2a_client "Show my watchlist"   # CLI probe
+A2A_API_KEY=<key> AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/ python -m app.a2a_client "Show my watchlist"   # CLI probe
 ```
 
-- **Agent card** at `/.well-known/agent-card.json`, with three skills and the `X-Mcp-Key` header declared.
-- **Keys per request:** `X-Mcp-Key` (whose watchlist) and `X-Model-Key` (gateway key). Both optional, with the
-  same env fallbacks as the UI. The probe reads `MCP_API_KEY` and `MODEL_API_KEY` from the environment.
+- **Agent card** at `/.well-known/agent-card.json`, with three skills; it declares the `x-api-key` scheme (and lists it
+  as required when `AGENT_API_KEYS` is set) plus the optional `X-Mcp-Key` input.
+- **Keys per request:** `x-api-key` (access), `X-Mcp-Key` (whose watchlist) and `X-Model-Key` (gateway key). The last two
+  are optional, with the same env fallbacks as the UI. The probe reads `MCP_API_KEY` and `MODEL_API_KEY` from the environment.
 - **Stateless:** each message stands alone. A caller can add prior turns as a data part
   `{"history": [{"role": "user"|"assistant", "content": "..."}]}` beside the text part; the web UI does this.
 - **Streaming:** `message/stream` sends status updates for each tool call and result (a text part plus a data part
   `{"event": "tool_call"|"tool_result", ...}`), then the final answer as an artifact.
-- Uses a2a-sdk 0.3.x and the AgentCore SDK's `serve_a2a`, which serves `/ping` and the card.
+- Uses a2a-sdk 0.3.x and the AgentCore SDK's `build_a2a_app`, wrapped with the key check and run by uvicorn.
+  `/ping` and the card come from the SDK.
 
-For a remote agent, the UI uses `A2A_AUTH_MODE`: `bearer` (+ `A2A_BEARER_TOKEN`) or `sigv4` (+ `A2A_REGION`, AWS credentials in your shell).
+For a remote agent, the UI authenticates to it with `A2A_AUTH_MODE`: `bearer` (+ `A2A_BEARER_TOKEN`) or `sigv4`
+(+ `A2A_REGION`, AWS credentials in your shell), on top of the `x-api-key`.
 
 ## Docker
 
@@ -198,53 +241,64 @@ AgentCore needs an **ARM64** container serving A2A on **port 9000**; `Dockerfile
 
 ```bash
 export AWS_REGION=us-east-1
-./deploy/build_and_push.sh                      # builds linux/arm64, pushes to ECR, prints the image URI
+bash deploy/build_and_push.sh                   # builds linux/arm64, pushes to ECR, prints the image URI
 
 # set the runtime's configuration in your shell (same names as .env.example), then:
-export MODEL_BASE_URL=... MODEL_NAME=... MODEL_API_KEY=... MCP_URL=...     # or ANTHROPIC_API_KEY + ANTHROPIC_MODEL
+export MODEL_BASE_URL=... MODEL_NAME=... MODEL_API_KEY=... MCP_URL=... AGENT_API_KEYS=...   # or ANTHROPIC_API_KEY + ANTHROPIC_MODEL
 python deploy/agentcore_deploy.py --image <image-uri> --role-arn <execution-role-arn> --region $AWS_REGION
 ```
 
 - The script creates the runtime with protocol A2A, public network mode, IAM (SigV4) auth for callers, and the
-  request header allowlist `X-Mcp-Key` + `X-Model-Key`, so each caller's MCP key reaches the agent.
+  request header allowlist `X-Mcp-Key`, `X-Model-Key` and `X-Api-Key`, so each caller's keys reach the agent.
   Add `--jwt-discovery-url` and `--jwt-allowed-client` for a JWT authorizer instead (it also allowlists `Authorization`).
   Use `--update <runtime-id>` to redeploy.
+- AgentCore's own IAM or JWT auth gates who can invoke the runtime; `AGENT_API_KEYS` is a second layer inside it.
+  If the runtime does not forward `X-Api-Key` to the container, every call gets a 401 (see "Not yet verified").
 - You create the IAM execution role yourself (see the AgentCore docs, "Runtime permissions").
 - Values you export become the runtime's environment variables, which are readable by anyone who can
   read the runtime configuration. Fine for a demo with throwaway keys; move them to Secrets Manager later.
 - The script prints the `A2A_AGENT_URL` to use. Then point the chat UI at it:
-  `AGENT_MODE=a2a A2A_AGENT_URL=<url> A2A_AUTH_MODE=sigv4 A2A_REGION=$AWS_REGION uvicorn app.server:app --port 8000`.
+  `AGENT_MODE=a2a A2A_AGENT_URL=<url> A2A_AUTH_MODE=sigv4 A2A_REGION=$AWS_REGION A2A_API_KEY=<key> uvicorn app.server:app --port 8000`.
 
 ## Layout
 
 | File | Role |
 |---|---|
 | `app/config.py` | Env vars only, one config object per endpoint |
-| `app/auth.py` | The single place that builds credentials (OAuth would be added here) |
+| `app/auth.py` | The single place for credentials: outbound keys and, inbound, the `x-api-key` check and middleware |
 | `app/agent.py` | Agent logic, no web imports: `connect()` and `run_agent()` |
 | `app/a2a_server.py` | A2A agent card, executor, and entrypoint |
 | `app/a2a_client.py` | Minimal A2A client used by the UI, plus a CLI probe |
 | `app/server.py` | Thin FastAPI layer for the chat UI |
-| `app/static/index.html` | Single-file chat UI (renders markdown tables, tool-call timeline, agent card panel) |
+| `app/static/index.html` | Single-file chat UI (markdown tables, tool-call timeline, agent card panel) |
+| `scripts/start.sh` | Starts the UI and the A2A agent, skipping what is already running; `--restart` restarts both |
 | `Dockerfile`, `Dockerfile.agentcore` | UI image, and the ARM64 A2A image for AgentCore |
 | `deploy/` | ECR build/push script and the AgentCore create/update script |
 | `.devcontainer/` | Codespaces setup |
 
 ## Verification status
 
-Tested by hand in a GitHub Codespace, direct Anthropic route: the agent card is served (and its address
-is fixed by `AGENTCORE_RUNTIME_URL`); the CLI probe reads and writes the watchlist over A2A with streamed tool calls;
-the chat UI works in both direct and A2A modes.
+Tested by hand in a GitHub Codespace (before the key check and start script were added), direct Anthropic route: the agent card
+is served; the CLI probe reads and writes the watchlist over A2A with streamed tool calls; the chat UI works in direct and
+A2A modes.
+
+Tested in a sandbox without the real SDKs: the key verification and middleware (valid, wrong, missing and multiple keys;
+`/ping` and the card staying open; no key echoed back), the config rules, the client's key handling, and `scripts/start.sh`
+(start, no-op rerun, partial recovery, restart, crash reporting, overlapping starts).
 
 Not yet verified:
 
-- **Per-request key header:** that `X-Mcp-Key` overrides the server default. Test with
-  `AGENT_MODE=a2a A2A_AGENT_URL=http://localhost:9000/ MCP_API_KEY=wrong-key python -m app.a2a_client "Show my watchlist"`:
-  it should fail. If it prints a watchlist, the header is being ignored. This matters for AgentCore.
+- **The new A2A startup path:** the server now builds the app with `build_a2a_app`, adds the key middleware, and runs uvicorn
+  itself instead of calling `serve_a2a`. I could not read the SDK source, so check on first run that `/ping`, the card, and
+  JSON-RPC all answer, and that the card shows the right address (`A2A_PUBLIC_URL`).
+- **Per-request key headers (`X-Mcp-Key`, `X-Model-Key`):** that they override the server defaults. Test with a wrong
+  `MCP_API_KEY` on the probe: it should fail. If it prints a watchlist, the header is being ignored.
+- **`X-Api-Key` on AgentCore:** that the runtime forwards it to the container once allowlisted. The middleware reads the
+  raw request header, so it works anywhere the header arrives.
 - **Gateway model route:** needs `/v1/messages`, streaming, tool use, `x-api-key`, and your `MODEL_NAME`.
   If it rejects `anthropic-beta` headers, keep `MODEL_DISABLE_BETAS=1`.
 - **AgentCore:** that the SDK's bundled CLI starts in an ARM64 AgentCore container, that the runtime can reach your
-  gateway (and Anthropic in direct mode), header forwarding with the allowlist, and `sigv4`/`bearer` calls from the UI.
+  gateway (and Anthropic in direct mode), and `sigv4`/`bearer` calls from the UI.
 - **MCP transport `sse`:** only `http` has been exercised.
 - **Read/write labels** in the UI are a name heuristic (`Get*` = read). Tool input schemas are not shown in the sidebar.
 - **Gateway for A2A:** no Axway documentation found on fronting an A2A agent with AI Gateway, so inbound A2A calls

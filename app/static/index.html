@@ -238,6 +238,13 @@
       <h1>Connect an account</h1>
       <p>Each MCP API key has its own watchlist. Use a different key to demo another account.</p>
 
+      <div id="agent-field" hidden>
+        <label for="agent-key">Agent API key</label>
+        <input id="agent-key" type="password" autocomplete="off" spellcheck="false">
+        <div class="hint" id="agent-hint"></div>
+        <div class="field-error" id="agent-error"></div>
+      </div>
+
       <label for="model-key">Model API key</label>
       <input id="model-key" type="password" autocomplete="off" spellcheck="false">
       <div class="hint" id="model-hint"></div>
@@ -305,7 +312,7 @@
 const $ = (s) => document.querySelector(s);
 const STORE = "swa.keys";
 const state = {
-  keys: { model: "", mcp: "" }, history: [], busy: false, cfg: null, toolEls: {}, cardTimer: null,
+  keys: { agent: "", model: "", mcp: "" }, history: [], busy: false, cfg: null, toolEls: {}, cardTimer: null,
   sessionId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2) + "-session-id"),
 };
 
@@ -338,6 +345,7 @@ function authHeaders(json = false) {
   if (json) hd["Content-Type"] = "application/json";
   if (state.keys.model) hd["X-Model-Key"] = state.keys.model;
   if (state.keys.mcp) hd["X-Mcp-Key"] = state.keys.mcp;
+  if (state.keys.agent) hd["X-Api-Key"] = state.keys.agent;
   hd["X-Session-Id"] = state.sessionId;
   return hd;
 }
@@ -423,7 +431,7 @@ function md(text) {
 
 /* ---------------- connect ---------------- */
 function clearErrors() {
-  for (const id of ["model-error", "mcp-error", "connect-error"]) $("#" + id).textContent = "";
+  for (const id of ["agent-error", "model-error", "mcp-error", "connect-error"]) $("#" + id).textContent = "";
 }
 
 async function tryConnect() {
@@ -435,7 +443,7 @@ async function tryConnect() {
 
 async function onConnect() {
   clearErrors();
-  state.keys = { model: $("#model-key").value.trim(), mcp: $("#mcp-key").value.trim() };
+  state.keys = { agent: $("#agent-key").value.trim(), model: $("#model-key").value.trim(), mcp: $("#mcp-key").value.trim() };
   const btn = $("#connect-btn");
   btn.disabled = true;
   btn.textContent = "Connecting";
@@ -443,6 +451,7 @@ async function onConnect() {
     const res = await tryConnect();
     if (!res.ok) {
       const e = res.errors;
+      $("#agent-error").textContent = e.agent || "";
       $("#model-error").textContent = e.model ? `Model: ${e.model}` : "";
       $("#mcp-error").textContent = e.mcp ? `MCP: ${e.mcp}` : "";
       $("#connect-error").textContent = e.keys || e.config || e.connect || "";
@@ -508,7 +517,7 @@ async function refreshCardStatus() {
       const advertised = s.advertised_url || "";
       if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(advertised) && /\.app\.github\.dev$/.test(location.hostname)) {
         warn.hidden = false;
-        warn.textContent = "The card still advertises " + advertised + ". Set AGENTCORE_RUNTIME_URL in .env and restart the A2A server.";
+        warn.textContent = "The card still advertises " + advertised + ". Set A2A_PUBLIC_URL to this Codespace's port 9000 address in .env and restart (bash scripts/start.sh --restart).";
       }
     } else {
       setCardStatus(false, "A2A server not running");
@@ -554,8 +563,9 @@ function renderTools(tools, kind = "tools") {
 function switchAccount() {
   try { sessionStorage.removeItem(STORE); } catch {}
   clearInterval(state.cardTimer);
-  state.keys = { model: "", mcp: "" };
+  state.keys = { agent: "", model: "", mcp: "" };
   state.history = [];
+  $("#agent-key").value = "";
   $("#model-key").value = "";
   $("#mcp-key").value = "";
   clearErrors();
@@ -730,6 +740,12 @@ function configureKeyField(which, mode, hints) {
 
 async function boot() {
   state.cfg = await (await fetch("/api/config")).json();
+  const agentMode = state.cfg.agent_key;
+  $("#agent-field").hidden = agentMode === "none";
+  $("#agent-hint").textContent = agentMode === "required"
+    ? "Required. This server checks every request."
+    : "Optional. Sent as x-api-key to the A2A agent; leave blank to use the server default.";
+  $("#agent-key").placeholder = agentMode === "optional" ? "Using the default" : "";
   configureKeyField("model", state.cfg.model_key, {
     unused: "Direct to Anthropic: the server's Anthropic key is used.",
     required: "Required.",
@@ -741,7 +757,7 @@ async function boot() {
   });
 
   $("#connect-btn").addEventListener("click", onConnect);
-  for (const id of ["model-key", "mcp-key"])
+  for (const id of ["agent-key", "model-key", "mcp-key"])
     $("#" + id).addEventListener("keydown", (e) => { if (e.key === "Enter") onConnect(); });
   $("#switch-btn").addEventListener("click", switchAccount);
   $("#card-copy").addEventListener("click", () => copyText($("#card-url").textContent, $("#card-copy")));
@@ -755,12 +771,12 @@ async function boot() {
   let saved = null;
   try { saved = JSON.parse(sessionStorage.getItem(STORE) || "null"); } catch {}
   if (saved) {
-    state.keys = saved;
+    state.keys = { agent: "", model: "", mcp: "", ...saved };
     try {
       const res = await tryConnect();
       if (res.ok) return showApp(res);
     } catch {}
-    state.keys = { model: "", mcp: "" };
+    state.keys = { agent: "", model: "", mcp: "" };
     try { sessionStorage.removeItem(STORE); } catch {}
   }
 }

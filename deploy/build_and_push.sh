@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the ARM64 A2A image and push it to ECR. Prints the image URI.
 # Needs: docker with buildx, aws CLI with credentials for the target account.
-#   AWS_REGION=us-east-1 ./deploy/build_and_push.sh
+#   AWS_REGION=us-east-1 bash deploy/build_and_push.sh
 set -euo pipefail
 
 : "${AWS_REGION:?Set AWS_REGION}"

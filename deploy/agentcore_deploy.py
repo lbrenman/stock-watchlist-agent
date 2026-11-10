@@ -32,10 +32,10 @@ RUNTIME_ENV_NAMES = [
     "MODEL_BASE_URL", "MODEL_NAME", "MODEL_AUTH_MODE", "MODEL_API_KEY", "MODEL_DISABLE_BETAS",
     "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
     "MCP_URL", "MCP_TRANSPORT", "MCP_SERVER_NAME", "MCP_AUTH_MODE", "MCP_API_KEY_HEADER", "MCP_API_KEY",
-    "AGENT_MAX_TURNS",
+    "AGENT_MAX_TURNS", "AGENT_API_KEYS", "AGENT_REQUIRE_API_KEY",
 ]
 # Request headers the A2A server reads (must be allowlisted or AgentCore drops them).
-BASE_HEADER_ALLOWLIST = ["X-Mcp-Key", "X-Model-Key"]
+BASE_HEADER_ALLOWLIST = ["X-Mcp-Key", "X-Model-Key", "X-Api-Key"]
 
 
 def main() -> int:

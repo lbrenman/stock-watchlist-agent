@@ -7,6 +7,9 @@ AGENT_MODE=a2a:              this server is an A2A client for A2A_AGENT_URL (loc
 Keys arrive per request in headers (X-Model-Key, X-Mcp-Key). A blank or missing
 header falls back to the optional server-side default from the environment.
 Nothing is stored between requests, and keys are never logged.
+
+Agent API key (x-api-key): in direct mode, when AGENT_API_KEYS is set, /api/connect and /api/chat
+require it. In a2a mode this server does not check it; it forwards the key to the remote agent.
 """
 from __future__ import annotations
 
@@ -23,8 +26,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import a2a_client
-from .auth import MissingKeyError, UnsupportedAuthMode, a2a_target_auth, mcp_headers, model_env
-from .config import load_ui_settings, local_card_url
+from .auth import MissingKeyError, UnsupportedAuthMode, a2a_target_auth, mcp_headers, model_env, verify_api_key
+from .config import load_inbound_auth, load_ui_settings, local_card_url
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("server")
@@ -33,8 +36,15 @@ ui = load_ui_settings()  # fails fast with a clear message if env vars are missi
 settings = ui.agent  # direct mode only
 target = ui.target  # a2a mode only
 
+inbound = load_inbound_auth() if ui.mode == "direct" else None  # raises if required but no keys set
+
 if ui.mode == "direct":
     log.info("Mode: direct. Model route: %s (%s)", settings.model.route, settings.model.name)  # type: ignore[union-attr]
+    if inbound and inbound.keys:
+        log.info("x-api-key required for /api/connect and /api/chat (%d key%s).",
+                 len(inbound.keys), "" if len(inbound.keys) == 1 else "s")
+    else:
+        log.warning("AGENT_API_KEYS is not set: this chat UI is open to anyone who can reach it.")
 else:
     log.info("Mode: a2a. Agent endpoint: %s", urlsplit(target.url).netloc)  # type: ignore[union-attr]
 
@@ -53,6 +63,13 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1)
+
+
+def _gate(x_api_key: str | None) -> JSONResponse | None:
+    """Direct mode: reject the request unless it carries a valid Agent API key (when keys are configured)."""
+    if inbound and inbound.keys and not verify_api_key(x_api_key, inbound.keys):
+        return JSONResponse({"errors": {"agent": "The Agent API key is missing or wrong."}}, status_code=401)
+    return None
 
 
 def _check_keys(x_model_key: str | None, x_mcp_key: str | None) -> JSONResponse | None:
@@ -101,7 +118,12 @@ async def get_config() -> dict:
     # The agent card this UI is showing: our own A2A server's card (direct mode), or the
     # card of the remote agent the UI is a client of (a2a mode).
     card_url = a2a_client.card_url(target) if ui.mode == "a2a" else local_card_url()  # type: ignore[arg-type]
-    return {"mode": ui.mode, "model_key": model_key, "mcp_key": mcp_key, "agent_card_url": card_url}
+    if ui.mode == "direct":
+        agent_key = "required" if inbound and inbound.keys else "none"
+    else:
+        agent_key = "optional"  # forwarded to the remote agent; blank uses A2A_API_KEY if set
+    return {"mode": ui.mode, "model_key": model_key, "mcp_key": mcp_key, "agent_key": agent_key,
+            "agent_card_url": card_url}
 
 
 @app.get("/api/agent-card")
@@ -126,12 +148,17 @@ async def api_connect(
     x_model_key: str | None = Header(default=None),
     x_mcp_key: str | None = Header(default=None),
     x_session_id: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
 ):
     if ui.mode == "a2a":
         try:
-            card = await a2a_client.fetch_card(target, x_session_id)  # type: ignore[arg-type]
+            card = await a2a_client.fetch_card(target, x_session_id, x_api_key)  # type: ignore[arg-type]
         except (a2a_client.A2AError, MissingKeyError, UnsupportedAuthMode) as exc:
             return JSONResponse({"errors": {"connect": str(exc)}}, status_code=502)
+        try:
+            await a2a_client.check_agent_key(target, x_api_key, x_session_id)  # type: ignore[arg-type]
+        except a2a_client.A2AError as exc:
+            return JSONResponse({"errors": {"agent": str(exc)}}, status_code=401)
         skills = [{"name": s.get("name", ""), "description": s.get("description", "")}
                   for s in card.get("skills") or []]
         return {
@@ -140,6 +167,8 @@ async def api_connect(
             "tools": skills,
         }
 
+    if (denied := _gate(x_api_key)) is not None:
+        return denied
     if (bad := _check_keys(x_model_key, x_mcp_key)) is not None:
         return bad
     try:
@@ -157,7 +186,10 @@ async def api_chat(
     x_model_key: str | None = Header(default=None),
     x_mcp_key: str | None = Header(default=None),
     x_session_id: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
 ):
+    if ui.mode == "direct" and (denied := _gate(x_api_key)) is not None:
+        return denied
     if (bad := _check_keys(x_model_key, x_mcp_key)) is not None:
         return bad
     if req.messages[-1].role != "user":
@@ -170,7 +202,7 @@ async def api_chat(
             a2a_target_auth(target)  # type: ignore[arg-type]  # fail early on a missing token or region
         except (MissingKeyError, UnsupportedAuthMode) as exc:
             return JSONResponse({"errors": {"config": str(exc)}}, status_code=500)
-        events = a2a_client.stream_chat(target, messages, x_model_key, x_mcp_key, x_session_id)  # type: ignore[arg-type]
+        events = a2a_client.stream_chat(target, messages, x_model_key, x_mcp_key, x_session_id, x_api_key)  # type: ignore[arg-type]
     else:
         events = run_agent(settings, messages, x_model_key, x_mcp_key)  # type: ignore[arg-type]
 

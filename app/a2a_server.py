@@ -1,4 +1,4 @@
-"""A2A front door for the agent (a2a-sdk 0.3.x, served with the AgentCore SDK helper).
+"""A2A front door for the agent (a2a-sdk 0.3.x, app built with the AgentCore SDK's build_a2a_app).
 
 Run:  python -m app.a2a_server
 Serves (port 9000 by default, which is also what AgentCore requires):
@@ -11,6 +11,10 @@ The same process works on a laptop, in a Codespace, and in AgentCore Runtime.
 Per request, the caller may send these headers (both optional, env fallbacks apply):
     X-Mcp-Key     the MCP API key (decides whose watchlist this is)
     X-Model-Key   the model/gateway key (ignored when the server is in direct Anthropic mode)
+
+Access control: when AGENT_API_KEYS is set, every request except /ping and the agent card must
+carry a valid x-api-key header (HTTP 401 otherwise). With AGENT_REQUIRE_API_KEY=1 the server
+refuses to start without a key.
 
 Conversation history: the server keeps no state. A caller may include prior turns as
 a data part {"history": [{"role": "user"|"assistant", "content": "..."}]} next to the
@@ -33,8 +37,8 @@ from a2a.types import AgentCard, DataPart, Part, TaskState, TextPart
 from a2a.utils import new_task
 
 from .agent import run_agent
-from .auth import MissingKeyError, UnsupportedAuthMode
-from .config import Settings, load_settings
+from .auth import ApiKeyMiddleware, MissingKeyError, UnsupportedAuthMode
+from .config import Settings, load_inbound_auth, load_settings
 
 log = logging.getLogger("a2a")
 
@@ -58,9 +62,9 @@ def public_url() -> str:
     return f"http://localhost:{port}/"
 
 
-def build_card() -> AgentCard:
+def build_card(auth_required: bool = False) -> AgentCard:
     # Built from the spec's JSON field names so it validates the same way a client would read it.
-    return AgentCard.model_validate({
+    card = {
         "name": "Stock Watchlist Agent",
         "description": (
             "Looks up stock quotes and manages a per-account watchlist (view, add, remove, clear) "
@@ -95,15 +99,23 @@ def build_card() -> AgentCard:
             },
         ],
         "securitySchemes": {
+            "agentKey": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "x-api-key",
+                "description": "Agent API key. Required on every call except the agent card and /ping.",
+            },
             "mcpKey": {
                 "type": "apiKey",
                 "in": "header",
                 "name": "X-Mcp-Key",
-                "description": "MCP API key. Each key has its own watchlist.",
+                "description": "Optional MCP API key. Each key has its own watchlist.",
             },
         },
-        "security": [{"mcpKey": []}],
-    })
+    }
+    if auth_required:
+        card["security"] = [{"agentKey": []}]
+    return AgentCard.model_validate(card)
 
 
 # --------------------------------------------------------------------------- #
@@ -214,6 +226,16 @@ class WatchlistExecutor(AgentExecutor):
 # --------------------------------------------------------------------------- #
 # Entrypoint
 # --------------------------------------------------------------------------- #
+def _sdk_attr(name: str):
+    """Import a name from the AgentCore SDK, tolerating the module it lives in changing."""
+    for module in ("bedrock_agentcore.runtime.a2a", "bedrock_agentcore.runtime"):
+        try:
+            return getattr(__import__(module, fromlist=[name]), name)
+        except (ImportError, AttributeError):
+            continue
+    return None
+
+
 def _context_builder():
     """Make sure request headers reach the executor (state['headers']).
 
@@ -222,13 +244,7 @@ def _context_builder():
     Returns None if the AgentCore builder can't be imported, in which case the
     a2a-sdk default (which also records headers) is used.
     """
-    base = None
-    for module in ("bedrock_agentcore.runtime.a2a", "bedrock_agentcore.runtime"):
-        try:
-            base = getattr(__import__(module, fromlist=["BedrockCallContextBuilder"]), "BedrockCallContextBuilder")
-            break
-        except (ImportError, AttributeError):
-            continue
+    base = _sdk_attr("BedrockCallContextBuilder")
     if base is None:
         log.warning("BedrockCallContextBuilder not importable; using the default context builder.")
         return None
@@ -245,22 +261,53 @@ def _context_builder():
     return HeaderCapturingBuilder()
 
 
+def _bind_host() -> str:
+    """A2A_HOST, else 0.0.0.0 inside a container and 127.0.0.1 elsewhere (the same rule serve_a2a uses)."""
+    host = os.environ.get("A2A_HOST", "").strip()
+    if host:
+        return host
+    in_container = os.path.exists("/.dockerenv") or bool(os.environ.get("DOCKER_CONTAINER"))
+    return "0.0.0.0" if in_container else "127.0.0.1"
+
+
 def main() -> None:
-    from bedrock_agentcore.runtime import serve_a2a
+    import uvicorn
 
     logging.basicConfig(level=logging.INFO)
     settings = load_settings()
+    inbound = load_inbound_auth()  # raises if AGENT_REQUIRE_API_KEY is set without keys
     log.info("Model route: %s (%s)", settings.model.route, settings.model.name)
 
+    # The AgentCore SDK rewrites the card's url with AGENTCORE_RUNTIME_URL when it is set, and
+    # otherwise with a local address. Where we know a public address (A2A_PUBLIC_URL, or the
+    # Codespaces forwarded address), publish it that way. On AgentCore the variable is already set.
+    url = public_url()
+    if not url.startswith("http://localhost"):
+        os.environ.setdefault("AGENTCORE_RUNTIME_URL", url)
+
+    build_a2a_app = _sdk_attr("build_a2a_app")
+    if build_a2a_app is None:
+        raise RuntimeError("bedrock-agentcore[a2a] is not installed or does not provide build_a2a_app.")
     kwargs: dict[str, Any] = {}
     builder = _context_builder()
     if builder is not None:
         kwargs["context_builder"] = builder
-    host = os.environ.get("A2A_HOST", "").strip()
-    if host:
-        kwargs["host"] = host
 
-    serve_a2a(WatchlistExecutor(settings), build_card(), **kwargs)
+    app = build_a2a_app(WatchlistExecutor(settings), build_card(auth_required=bool(inbound.keys)), **kwargs)
+
+    if inbound.keys:
+        app.add_middleware(ApiKeyMiddleware, keys=list(inbound.keys))
+        log.info("x-api-key required on every call except /ping and the agent card (%d key%s).",
+                 len(inbound.keys), "" if len(inbound.keys) == 1 else "s")
+        if any(len(k) < 16 for k in inbound.keys):
+            log.warning("An AGENT_API_KEYS entry is shorter than 16 characters; use a longer random key.")
+    else:
+        log.warning("AGENT_API_KEYS is not set: this A2A agent is open to anyone who can reach it.")
+
+    port = int(os.environ.get("A2A_PORT", "").strip() or 9000)
+    if port != 9000:
+        log.warning("Serving on port %d. AgentCore only reaches A2A servers on port 9000.", port)
+    uvicorn.run(app, host=_bind_host(), port=port)
 
 
 if __name__ == "__main__":

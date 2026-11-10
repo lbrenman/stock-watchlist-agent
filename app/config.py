@@ -84,6 +84,7 @@ class A2ATarget:
     auth_mode: str  # "none" | "bearer" | "sigv4"
     bearer_token: str | None
     region: str | None  # for sigv4
+    api_key: str | None = None  # default x-api-key to send to the agent (UI field or header overrides)
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,7 @@ def load_ui_settings() -> UiSettings:
                 auth_mode=auth_mode,
                 bearer_token=_optional("A2A_BEARER_TOKEN") or None,
                 region=_optional("A2A_REGION") or _optional("AWS_REGION") or None,
+                api_key=_optional("A2A_API_KEY") or None,
             ),
         )
     raise RuntimeError("AGENT_MODE must be 'direct' or 'a2a'")
@@ -172,3 +174,28 @@ def local_card_url() -> str:
     if not base.endswith("/"):
         base += "/"
     return base + ".well-known/agent-card.json"
+
+
+@dataclass(frozen=True)
+class InboundAuth:
+    """Keys that callers must present (as x-api-key) to reach the agent."""
+
+    keys: tuple[str, ...]
+    require: bool
+
+
+def load_inbound_auth() -> InboundAuth:
+    """AGENT_API_KEYS: one key, or several separated by commas (so keys can be rotated with overlap).
+
+    Protects whichever process runs the agent: the A2A server (every JSON-RPC call) and the chat UI
+    server in direct mode. With AGENT_REQUIRE_API_KEY=1 the process refuses to start without a key;
+    otherwise no keys means open access (a warning is logged).
+    """
+    keys = tuple(k.strip() for k in _optional("AGENT_API_KEYS").split(",") if k.strip())
+    require = _flag("AGENT_REQUIRE_API_KEY", "0")
+    if require and not keys:
+        raise RuntimeError(
+            "AGENT_REQUIRE_API_KEY is set but AGENT_API_KEYS is empty. Generate a key with: "
+            "python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+        )
+    return InboundAuth(keys=keys, require=require)

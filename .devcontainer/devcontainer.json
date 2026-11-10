@@ -13,7 +13,8 @@
     "MCP_AUTH_MODE": "api_key",
     "MCP_API_KEY_HEADER": "x-api-key",
     "AGENT_MAX_TURNS": "15",
-    "A2A_HOST": "0.0.0.0"
+    "A2A_HOST": "0.0.0.0",
+    "AGENT_REQUIRE_API_KEY": "1"
   },
 
   // Names and descriptions only, never values. Codespaces prompts for these and
@@ -28,6 +29,9 @@
     "MCP_URL": {
       "description": "Gateway URL of the Fusion Stock Watchlist MCP server."
     },
+    "AGENT_API_KEYS": {
+      "description": "Required. The key callers must send as x-api-key to the chat UI and the A2A agent (comma-separated for several). Generate one: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    },
     "ANTHROPIC_API_KEY": {
       "description": "Optional. If set, the agent calls Anthropic directly and bypasses the gateway. Leave unset to use the gateway."
     },
@@ -38,9 +42,11 @@
 
   "postCreateCommand": "pip install -r requirements.txt",
 
-  // Start the chat UI (8000) and the A2A server (9000) each time the Codespace starts.
-  // Logs: /tmp/uvicorn.log and /tmp/a2a.log
-  "postStartCommand": "nohup uvicorn app.server:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 & nohup python -m app.a2a_server > /tmp/a2a.log 2>&1 &",
+  // Start the chat UI (8000) and the A2A agent (9000). The script only starts what is not already
+  // running, so it is safe on both hooks: start runs once per Codespace start, attach runs each time
+  // you open it and brings back anything that crashed. Logs: /tmp/uvicorn.log and /tmp/a2a.log
+  "postStartCommand": "bash scripts/start.sh",
+  "postAttachCommand": "bash scripts/start.sh",
 
   "forwardPorts": [8000, 9000],
   "portsAttributes": {

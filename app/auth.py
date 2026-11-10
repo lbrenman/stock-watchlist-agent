@@ -9,7 +9,9 @@ header), then the optional server-side default from the environment.
 """
 from __future__ import annotations
 
-from typing import Any
+import hmac
+import json
+from typing import Any, Sequence
 
 from .config import A2ATarget, McpConfig, ModelConfig
 
@@ -106,3 +108,61 @@ def _sigv4_auth(region: str, service: str = "bedrock-agentcore") -> Any:
             yield request
 
     return SigV4()
+
+
+# --------------------------------------------------------------------------- #
+# Inbound auth: callers of the agent present x-api-key
+# --------------------------------------------------------------------------- #
+def verify_api_key(provided: str | None, valid: Sequence[str]) -> bool:
+    """Constant-time check of a presented key against the configured keys.
+
+    No configured keys means the endpoint is open, so this returns True.
+    Every configured key is compared (no early exit) so timing does not reveal which one matched.
+    """
+    if not valid:
+        return True
+    presented = (provided or "").encode("utf-8")
+    ok = False
+    for key in valid:
+        ok = hmac.compare_digest(presented, key.encode("utf-8")) | ok
+    return ok
+
+
+class ApiKeyMiddleware:
+    """Pure-ASGI middleware: require a valid x-api-key on every HTTP request except discovery and health.
+
+    Open (GET/HEAD only): /ping (AgentCore's health check) and the agent card. Everything else,
+    including the JSON-RPC endpoint, needs the key. Only the x-api-key header is read (never a query
+    string), and the key is never logged or echoed back. Non-HTTP scopes (lifespan) pass straight through.
+    """
+
+    OPEN_PATHS = ("/ping", "/.well-known/agent-card.json", "/.well-known/agent.json")
+
+    def __init__(self, app: Any, keys: Sequence[str], open_paths: Sequence[str] | None = None):
+        self.app = app
+        self.keys = list(keys)
+        self.open_paths = tuple(open_paths or self.OPEN_PATHS)
+
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        path = (scope.get("path") or "/").rstrip("/") or "/"
+        if scope.get("method", "GET") in ("GET", "HEAD") and path in self.open_paths:
+            await self.app(scope, receive, send)
+            return
+        provided = next(
+            (v.decode("latin-1") for k, v in scope.get("headers", []) if k.lower() == b"x-api-key"), None
+        )
+        if verify_api_key(provided, self.keys):
+            await self.app(scope, receive, send)
+            return
+        body = json.dumps(
+            {"error": "unauthorized", "message": "Missing or invalid x-api-key header."}
+        ).encode("utf-8")
+        await send({
+            "type": "http.response.start",
+            "status": 401,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
+        })
+        await send({"type": "http.response.body", "body": body})

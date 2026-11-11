@@ -203,11 +203,58 @@ renders answers as markdown (tables with aligned numbers and green and red chang
 - **Phones:** the layout uses the full screen height without hiding behind Safari's toolbar or the notch, inputs are sized so
   iOS does not zoom, tables scroll sideways, and on a touch screen Return adds a line (the arrow button sends).
 
-To reach a remote agent, set `A2A_AGENT_URL`, and `A2A_AUTH_MODE` (`bearer` + `A2A_BEARER_TOKEN`, or `sigv4` + `A2A_REGION`
-with AWS credentials in the environment) to get past the host's own authentication.
-
 Because it only talks to the agent, it cannot see the MCP server: the panel lists the agent card's skills, not the MCP tools,
 and a wrong MCP key shows up on the first message rather than when connecting (the agent key is checked on connect).
+
+### Point the UI at an agent running somewhere else
+
+The UI finds the agent through one setting, `A2A_AGENT_URL`. It defaults to `http://localhost:9000/`, the agent on the same
+machine. To use an agent running elsewhere, set it wherever the UI server reads its environment (`.env`, a Codespaces
+secret, or `-e` for Docker), then restart the UI (`bash scripts/start.sh --restart`). No code change is needed.
+
+The UI uses that one URL two ways: it fetches the card from `<A2A_AGENT_URL>/.well-known/agent-card.json`, and it POSTs
+JSON-RPC to `A2A_AGENT_URL` itself, expecting an SSE stream. It ignores the `url` inside the card. So the URL must be an
+address that serves both.
+
+| Setting | What it does |
+|---|---|
+| `A2A_AGENT_URL` | Where the agent is. |
+| `A2A_API_KEY` | Sent as `x-api-key`. If empty, the first `AGENT_API_KEYS` entry in the UI's environment is used. |
+| `A2A_AUTH_MODE` | How to authenticate to the host: `none` (default), `bearer` or `sigv4`. |
+| `A2A_BEARER_TOKEN` | The token, when the mode is `bearer`. |
+| `A2A_REGION` | The AWS region, when the mode is `sigv4` (`AWS_REGION` also works). AWS credentials come from the environment. |
+
+**The agent is in a Codespace and the UI is somewhere else.**
+`A2A_AGENT_URL=https://<codespace-name>-9000.app.github.dev/` and `A2A_API_KEY=<one of the agent's AGENT_API_KEYS>`.
+The UI server must be able to reach port 9000. This has only been tested with the port set to Public. A Private port wants a
+GitHub sign-in, which the UI does not send. A Public port is protected only by the agent key, so use a long random key.
+
+**The agent is proxied in AI Gateway.**
+`A2A_AGENT_URL=<the proxy's URL>`. The proxy must:
+- serve the card at `<proxy URL>/.well-known/agent-card.json` and accept the JSON-RPC POST at the proxy URL itself;
+- not buffer the response, or tool calls appear only when the answer finishes;
+- pass `X-Mcp-Key`, `X-Model-Key` and `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` through to the agent. If it drops
+  `X-Mcp-Key`, every user silently gets the agent's default watchlist.
+
+The proxy can hold the agent's `x-api-key` and add it to each call. In that case the UI needs no agent key, and `A2A_API_KEY`
+is whatever key the gateway wants from its callers (or use `bearer` mode for a bearer token). Have the proxy authenticate its
+own callers, because one that accepts anonymous calls lets anyone with its URL use the agent. If you rotate the agent's key,
+update it in the gateway too. The card still advertises the agent's own address. To advertise the proxy instead, set
+`A2A_PUBLIC_URL` on the agent to the proxy URL; the UI works either way.
+
+**The agent is on AgentCore Runtime.**
+`A2A_AGENT_URL=https://bedrock-agentcore.<region>.amazonaws.com/runtimes/<url-encoded-arn>/invocations/`, with
+`A2A_AUTH_MODE=sigv4` and `A2A_REGION=<region>` (IAM auth), or `bearer` and `A2A_BEARER_TOKEN` (JWT authorizer), plus
+`A2A_API_KEY`. `deploy/agentcore_deploy.py` prints these for you. This route is untested; see "Verification status".
+
+**Check that it worked.**
+- The UI's startup log names the host it is talking to: `grep "Chat UI talking" /tmp/uvicorn.log` (Codespace), or look at the
+  terminal where the UI runs.
+- The agent panel shows the agent card URL the UI is using.
+- Ask for your watchlist, then switch the MCP API key in Settings and ask again. Each account should show its own list.
+- A wrong Agent API key should fail on connect. A wrong MCP key should fail on the first message.
+
+**Go back to the local agent.** Delete the `A2A_*` lines you added (or comment them out) and restart the UI.
 
 ## Docker
 
@@ -291,5 +338,6 @@ accounts, the collapsible panel, collapsed tool steps, pinned prompts, Enter han
   gateway (and Anthropic on the direct route), and `sigv4`/`bearer` calls from the UI.
 - **MCP transport `sse`:** only `http` has been exercised.
 - **Read/write labels** in the UI are a name heuristic (`Get*` = read).
-- **Gateway for A2A:** no Axway documentation found on fronting an A2A agent with AI Gateway, so A2A calls reach the agent
-  directly. The agent's outbound calls (model, MCP) still go through the gateway.
+- **Gateway for A2A:** an AI Gateway proxy of the agent works with the chat UI. Switching the MCP API key through it returns
+  each account's own watchlist, and the proxy rejects calls with no credentials. Not yet checked: whether it streams tool
+  calls live rather than buffering, and `X-Model-Key` through it.

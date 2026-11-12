@@ -8,13 +8,18 @@ Serves (port 9000 by default, which is also what AgentCore requires):
 
 The same process works on a laptop, in a Codespace, and in AgentCore Runtime.
 
-Per request, the caller may send these headers (both optional, env fallbacks apply):
-    X-Mcp-Key     the MCP API key (decides whose watchlist this is)
+Per request, the caller may send these headers (the keys are optional, env fallbacks apply):
+    X-Mcp-Key     the MCP API key (decides whose watchlist this is). When absent or blank the agent uses
+                  MCP_API_KEY from its environment, and when that is not set either, the caller's own
+                  x-api-key (so the key used to reach the agent doubles as the MCP key).
     X-Model-Key   the model/gateway key (ignored when the server is in direct Anthropic mode)
 
 Access control: when AGENT_API_KEYS is set, every request except /ping and the agent card must
 carry a valid x-api-key header (HTTP 401 otherwise). With AGENT_REQUIRE_API_KEY=1 the server
 refuses to start without a key.
+
+Browsers: the web page in web/ calls this server directly, so the app answers CORS preflights and sends
+CORS headers (any origin: access is by header key, not cookies). See main() for why the order matters.
 
 Conversation history: the server keeps no state. A caller may include prior turns as
 a data part {"history": [{"role": "user"|"assistant", "content": "..."}]} next to the
@@ -35,6 +40,7 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import AgentCard, DataPart, Part, TaskState, TextPart
 from a2a.utils import new_task
+from starlette.middleware.cors import CORSMiddleware
 
 from .agent import run_agent
 from .auth import ApiKeyMiddleware, MissingKeyError, UnsupportedAuthMode
@@ -44,6 +50,11 @@ log = logging.getLogger("a2a")
 
 MODEL_KEY_HEADER = "x-model-key"
 MCP_KEY_HEADER = "x-mcp-key"
+AGENT_KEY_HEADER = "x-api-key"
+SESSION_HEADER = "x-amzn-bedrock-agentcore-runtime-session-id"
+
+# Request headers a browser page may send to the agent (lower case; the CORS preflight is checked against these).
+CORS_ALLOWED_HEADERS = ["content-type", "accept", AGENT_KEY_HEADER, MCP_KEY_HEADER, MODEL_KEY_HEADER, SESSION_HEADER]
 
 
 # --------------------------------------------------------------------------- #
@@ -110,7 +121,10 @@ def build_card(auth_required: bool = False, model_note: str = "") -> AgentCard:
                 "type": "apiKey",
                 "in": "header",
                 "name": "X-Mcp-Key",
-                "description": "Optional MCP API key. Each key has its own watchlist.",
+                "description": (
+                    "Optional MCP API key. Each key has its own watchlist. When absent, the agent uses its "
+                    "MCP_API_KEY, and when that is not set, the x-api-key of the call."
+                ),
             },
         },
     }
@@ -183,7 +197,11 @@ class WatchlistExecutor(AgentExecutor):
 
         try:
             async for ev in run_agent(
-                self.settings, messages, headers.get(MODEL_KEY_HEADER), headers.get(MCP_KEY_HEADER)
+                self.settings,
+                messages,
+                headers.get(MODEL_KEY_HEADER),
+                headers.get(MCP_KEY_HEADER),
+                headers.get(AGENT_KEY_HEADER),
             ):
                 kind = ev["type"]
                 if kind == "text":
@@ -306,6 +324,17 @@ def main() -> None:
             log.warning("An AGENT_API_KEYS entry is shorter than 16 characters; use a longer random key.")
     else:
         log.warning("AGENT_API_KEYS is not set: this A2A agent is open to anyone who can reach it.")
+
+    # The web page calls this agent straight from the browser, so answer CORS. Starlette treats the middleware added
+    # last as the outermost layer, so this wraps the key check: a preflight (which carries no key) is answered before
+    # the check, and the check's 401 still carries CORS headers, so the page can read it and say the key was wrong.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=CORS_ALLOWED_HEADERS,
+        max_age=600,
+    )
 
     port = int(os.environ.get("A2A_PORT", "").strip() or 9000)
     if port != 9000:

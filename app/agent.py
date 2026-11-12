@@ -1,7 +1,10 @@
 """Agent logic. No web-framework imports, so it can be reused or redeployed.
 
 Public API:
-    run_agent(settings, messages, model_key, mcp_key) -> async stream of event dicts
+    run_agent(settings, messages, model_key, mcp_key, agent_key) -> async stream of event dicts
+        model_key  the caller's X-Model-Key (optional)
+        mcp_key    the caller's X-Mcp-Key (optional)
+        agent_key  the caller's own x-api-key (optional); the last fallback for the MCP key
 
 Event dicts yielded by run_agent:
     {"type": "text", "text": str}
@@ -53,9 +56,9 @@ _RUNTIME_ENV = {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
 # --------------------------------------------------------------------------- #
 # Options
 # --------------------------------------------------------------------------- #
-def _credentials(settings: Settings, model_key: str | None, mcp_key: str | None):
+def _credentials(settings: Settings, model_key: str | None, mcp_key: str | None, agent_key: str | None):
     env = model_env(settings.model, model_key)
-    headers = mcp_headers(settings.mcp, mcp_key)
+    headers = mcp_headers(settings.mcp, mcp_key, agent_key)
     secrets = [env["ANTHROPIC_API_KEY"], *headers.values()]
     return env, headers, secrets
 
@@ -184,9 +187,10 @@ async def run_agent(
     messages: list[dict[str, str]],
     model_key: str | None,
     mcp_key: str | None,
+    agent_key: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run one agent turn and stream normalized events."""
-    env, headers, secrets = _credentials(settings, model_key, mcp_key)
+    env, headers, secrets = _credentials(settings, model_key, mcp_key, agent_key)
     options = _build_options(settings, env, headers, max_turns=settings.max_turns)
     prefix = f"mcp__{settings.mcp.server_name}__"
     finished = False

@@ -1,7 +1,0 @@
-# Chat UI server only (it is an A2A client; it never loads the agent or the Agent SDK).
-fastapi
-uvicorn[standard]
-python-dotenv
-httpx
-# only used when A2A_AUTH_MODE=sigv4 (signing requests to AgentCore with IAM)
-boto3

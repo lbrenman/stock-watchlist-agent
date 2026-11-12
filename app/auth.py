@@ -2,10 +2,13 @@
 
 Each endpoint has its own auth mode. Only simple modes are implemented today.
 To add OAuth later, add a branch here (for example, fetch a token and return
-{"Authorization": "Bearer ..."}); agent.py, server.py and the A2A modules do not change.
+{"Authorization": "Bearer ..."}); agent.py and the A2A module do not change.
 
-Key precedence for each endpoint: key typed in the UI (or sent as a request
-header), then the optional server-side default from the environment.
+Key precedence for each outbound endpoint (first non-blank wins):
+  * MCP server:  the X-Mcp-Key header of the call, then MCP_API_KEY from the environment,
+                 then the caller's own x-api-key (the key it used to reach this agent).
+  * Model proxy: the X-Model-Key header of the call, then MODEL_API_KEY from the environment.
+                 (Direct Anthropic mode always uses the agent's ANTHROPIC_API_KEY.)
 """
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ import hmac
 import json
 from typing import Any, Sequence
 
-from .config import A2ATarget, McpConfig, ModelConfig
+from .config import McpConfig, ModelConfig
 
 
 class MissingKeyError(ValueError):
@@ -24,11 +27,13 @@ class UnsupportedAuthMode(NotImplementedError):
     """The configured auth mode is not implemented yet."""
 
 
-def _resolve(user_key: str | None, default: str | None, label: str) -> str:
-    key = (user_key or "").strip() or default
-    if not key:
-        raise MissingKeyError(f"{label} API key is required.")
-    return key
+def _first_key(label: str, *candidates: str | None, hint: str = "") -> str:
+    """The first candidate that is not blank. Raises MissingKeyError when there is none."""
+    for key in candidates:
+        key = (key or "").strip()
+        if key:
+            return key
+    raise MissingKeyError(f"{label} API key is required.{hint}")
 
 
 def model_env(cfg: ModelConfig, user_key: str | None) -> dict[str, str]:
@@ -50,64 +55,26 @@ def model_env(cfg: ModelConfig, user_key: str | None) -> dict[str, str]:
     if cfg.auth_mode == "api_key":
         return {
             "ANTHROPIC_BASE_URL": cfg.base_url,
-            "ANTHROPIC_API_KEY": _resolve(user_key, cfg.default_api_key, "Model"),
+            "ANTHROPIC_API_KEY": _first_key("Model", user_key, cfg.default_api_key),
             "ANTHROPIC_AUTH_TOKEN": "",
         }
     raise UnsupportedAuthMode(f"MODEL_AUTH_MODE '{cfg.auth_mode}' is not implemented yet.")
 
 
-def mcp_headers(cfg: McpConfig, user_key: str | None) -> dict[str, str]:
-    """HTTP headers for the MCP server."""
+def mcp_headers(cfg: McpConfig, user_key: str | None, agent_key: str | None = None) -> dict[str, str]:
+    """HTTP headers for the MCP server.
+
+    The key is the caller's X-Mcp-Key, else MCP_API_KEY, else the caller's own x-api-key (agent_key).
+    That last fallback means the agent key is sent to MCP_URL when nothing else is set, so the MCP
+    server (or the gateway in front of it) has to accept it as an MCP key.
+    """
     if cfg.auth_mode == "api_key":
-        return {cfg.api_key_header: _resolve(user_key, cfg.default_api_key, "MCP")}
+        key = _first_key(
+            "MCP", user_key, cfg.default_api_key, agent_key,
+            hint=" Send X-Mcp-Key, set MCP_API_KEY on the agent, or call the agent with an x-api-key.",
+        )
+        return {cfg.api_key_header: key}
     raise UnsupportedAuthMode(f"MCP_AUTH_MODE '{cfg.auth_mode}' is not implemented yet.")
-
-
-# --------------------------------------------------------------------------- #
-# Outbound auth to an A2A agent (the web UI as an A2A client)
-# --------------------------------------------------------------------------- #
-def a2a_target_auth(cfg: A2ATarget) -> tuple[dict[str, str], Any]:
-    """Return (extra headers, httpx.Auth or None) for calls to the A2A agent."""
-    if cfg.auth_mode == "none":
-        return {}, None
-    if cfg.auth_mode == "bearer":
-        if not cfg.bearer_token:
-            raise MissingKeyError("A2A_AUTH_MODE is 'bearer' but A2A_BEARER_TOKEN is not set.")
-        return {"Authorization": f"Bearer {cfg.bearer_token}"}, None
-    if cfg.auth_mode == "sigv4":
-        if not cfg.region:
-            raise MissingKeyError("A2A_AUTH_MODE is 'sigv4' but no region is set (A2A_REGION or AWS_REGION).")
-        return {}, _sigv4_auth(cfg.region)
-    raise UnsupportedAuthMode(f"A2A_AUTH_MODE '{cfg.auth_mode}' is not implemented.")
-
-
-def _sigv4_auth(region: str, service: str = "bedrock-agentcore") -> Any:
-    """httpx.Auth that signs each request with the ambient AWS credentials."""
-    import httpx
-
-    class SigV4(httpx.Auth):
-        requires_request_body = True
-
-        def auth_flow(self, request):  # type: ignore[override]
-            import boto3
-            from botocore.auth import SigV4Auth
-            from botocore.awsrequest import AWSRequest
-
-            creds = boto3.Session().get_credentials()
-            if creds is None:
-                raise MissingKeyError("No AWS credentials found for SigV4 signing.")
-            aws_req = AWSRequest(
-                method=request.method,
-                url=str(request.url),
-                data=request.content,
-                headers={"Content-Type": request.headers.get("content-type", "application/json")},
-            )
-            SigV4Auth(creds.get_frozen_credentials(), service, region).add_auth(aws_req)
-            for key, value in aws_req.headers.items():
-                request.headers[key] = value
-            yield request
-
-    return SigV4()
 
 
 # --------------------------------------------------------------------------- #
@@ -134,6 +101,9 @@ class ApiKeyMiddleware:
     Open (GET/HEAD only): /ping (AgentCore's health check) and the agent card. Everything else,
     including the JSON-RPC endpoint, needs the key. Only the x-api-key header is read (never a query
     string), and the key is never logged or echoed back. Non-HTTP scopes (lifespan) pass straight through.
+
+    CORS preflights never reach this check: the CORS middleware is added after it, so it wraps this one
+    (see a2a_server.main).
     """
 
     OPEN_PATHS = ("/ping", "/.well-known/agent-card.json", "/.well-known/agent.json")

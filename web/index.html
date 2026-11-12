@@ -84,20 +84,32 @@
   .panel { width: min(430px, 100%); }
   .panel h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.02em; font-weight: 600; }
   .panel > p { margin: 0 0 8px; color: var(--ink-2); }
-  #home-connect { margin-top: 24px; width: 100%; padding: 13px 16px; }
-  #home-error { margin-top: 14px; }
 
-  /* ---------- key form (home screen and settings sheet) ---------- */
+  /* ---------- form fields and clients (home screen and settings sheet share them) ---------- */
   label { display: block; font-weight: 600; margin: 18px 0 6px; font-size: 14px; }
-  label.check { display: flex; align-items: center; gap: 10px; font-weight: 500; margin: 20px 0 0; }
-  label.check input { width: 18px; height: 18px; accent-color: var(--primary); margin: 0; }
   .pwd { position: relative; }
   input[type=password], input[type=text] { width: 100%; padding: 11px 64px 11px 13px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel); font-family: var(--mono); font-size: 13.5px; }
+  input.plain { padding-right: 13px; }
   .reveal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted); font-size: 12.5px; padding: 8px 10px; border-radius: 8px; }
   .reveal:hover { color: var(--ink); background: var(--soft); }
   .hint { color: var(--muted); font-size: 13px; margin-top: 5px; }
   .field-error { color: var(--loss); font-size: 13px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
   .field-error:empty { display: none; }
+  .clients { margin-top: 18px; }
+  .clist { display: grid; gap: 8px; }
+  .crow { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .crow.active { border-color: var(--read); }
+  .cmain { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; border: 0; background: transparent; padding: 10px 12px; min-height: 44px; border-radius: 12px; }
+  .cmain:hover { background: var(--soft); }
+  .cname { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
+  .cname .ctext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .curl { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cactions { display: flex; align-items: center; gap: 6px; padding-right: 10px; flex: none; }
+  .cbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+  .cform { margin-top: 14px; padding: 2px 16px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+  .cform h3 { margin: 16px 0 0; font-size: 16px; letter-spacing: -0.01em; }
+  .cstatus { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  .cstatus:empty { display: none; }
 
   /* ---------- app shell ---------- */
   .app { display: grid; grid-template-rows: auto 1fr; position: relative; overflow: hidden; }
@@ -224,9 +236,6 @@
   .sheet-head { display: flex; align-items: center; justify-content: space-between; }
   .sheet-head h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
   .sheet-sub { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
-  .sheet-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 22px; }
-  .sheet-actions .spacer { flex: 1; }
-  #settings-msg { margin-top: 12px; }
 
   /* ---------- phones ---------- */
   @media (max-width: 860px) {
@@ -293,11 +302,9 @@
   </div>
   <div class="form-side">
     <div class="panel">
-      <h1>Connect</h1>
-      <p>Each MCP API key has its own watchlist. Use a different key to see another account.</p>
-      <div id="home-form"></div>
-      <button class="btn" id="home-connect" type="button">Connect</button>
-      <div class="field-error" id="home-error"></div>
+      <h1>Connect to an agent</h1>
+      <p>A client is an agent's address plus the keys to use with it. Each MCP API key has its own watchlist.</p>
+      <div class="clients" id="home-clients"></div>
     </div>
   </div>
 </section>
@@ -313,10 +320,10 @@
       <span class="t2">Amplify AI Gateway</span>
     </div>
     <div class="spacer"></div>
-    <button class="pill" id="account-pill" type="button" title="Open settings">Account <b id="account"></b></button>
-    <button class="btn quiet label-hide tapsize" id="settings-open" type="button" aria-label="Switch account or change settings">
+    <button class="pill" id="account-pill" type="button" title="Switch client">Client <b id="account"></b></button>
+    <button class="btn quiet label-hide tapsize" id="settings-open" type="button" aria-label="Switch client or edit clients">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span>Switch account</span>
+      <span>Clients</span>
     </button>
   </header>
   <div class="body">
@@ -325,6 +332,7 @@
         <h3>Agent</h3>
         <div class="card-box">
           <div class="card-status"><span class="dotlive"></span><span id="agent-title"></span></div>
+          <div class="agent-sub" id="agent-client"></div>
           <div class="agent-sub" id="agent-version"></div>
           <p class="agent-desc" id="agent-desc"></p>
           <h3 style="margin-top:14px">Agent card</h3>
@@ -364,34 +372,26 @@
 <div class="modal-scrim" id="settings-scrim" hidden></div>
 <div class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
   <div class="sheet-head">
-    <h2 id="settings-title">Settings</h2>
-    <button class="icon-btn" id="settings-close" type="button" aria-label="Close settings">
+    <h2 id="settings-title">Clients</h2>
+    <button class="icon-btn" id="settings-close" type="button" aria-label="Close">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
   </div>
-  <p class="sheet-sub">Change the keys to switch accounts. The MCP key decides whose watchlist you see.</p>
-  <div id="settings-form"></div>
-  <div class="sheet-actions">
-    <button class="btn quiet" id="settings-forget" type="button">Forget saved keys</button>
-    <span class="spacer"></span>
-    <button class="btn quiet" id="settings-cancel" type="button">Cancel</button>
-    <button class="btn" id="settings-save" type="button">Save and reconnect</button>
-  </div>
-  <div class="hint" id="settings-msg"></div>
+  <p class="sheet-sub">Pick a client to switch to it. The MCP API key decides whose watchlist you see.</p>
+  <div class="clients" id="settings-clients"></div>
 </div>
 
 <script>
 const $ = (s) => document.querySelector(s);
-const SETTINGS_KEY = "swa.settings";   // saved keys (plain text, on this device only)
-const REMEMBER_KEY = "swa.remember";   // "0" = the user turned remembering off
-const SIDE_KEY = "swa.side";           // "open" | "closed", the agent panel
-const state = {
-  keys: { agent: "", mcp: "" }, remember: true, history: [], busy: false, cfg: null, connected: false, sideOpen: false,
-  sessionId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2) + "-session-id"),
-};
+const CLIENTS_KEY = "swa.clients";   // saved clients, keys included (plain text, on this device only)
+const ACTIVE_KEY = "swa.active";     // id of the client last connected
+const SIDE_KEY = "swa.side";         // "open" | "closed", the agent panel
+const state = { clients: [], activeId: null, history: [], busy: false, connected: false, sideOpen: false };
 const isMobile = window.matchMedia("(max-width: 860px)");
 const isTouch = window.matchMedia("(pointer: coarse)");
-let homeForm, sheetForm;
+let homeView, sheetView;
+const views = [];
+let connecting = false;
 
 const SUGGESTIONS = [
   { text: "What is the quote for AAPL?", kind: "read" },
@@ -417,14 +417,11 @@ function h(tag, props = {}, ...kids) {
   return el;
 }
 
-function authHeaders(json = false, keys = state.keys) {
-  const hd = {};
-  if (json) hd["Content-Type"] = "application/json";
-  if (keys.agent) hd["X-Api-Key"] = keys.agent;   // blank: the server uses the key from its environment
-  if (keys.mcp) hd["X-Mcp-Key"] = keys.mcp;
-  hd["X-Session-Id"] = state.sessionId;
-  return hd;
-}
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+  : String(Date.now()) + "-" + Math.random().toString(16).slice(2) + "-" + Math.random().toString(16).slice(2));
+const hex = () => uuid().replace(/-/g, "");
+const hostOf = (url) => { try { return new URL(url).host; } catch { return url; } };
+const redact = (text, secrets) => secrets.filter(Boolean).reduce((t, s) => t.split(s).join("***"), String(text));
 
 /* ---------------- markdown (small, DOM-built, no innerHTML) ---------------- */
 const splitRow = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
@@ -505,73 +502,402 @@ function md(text) {
   return root;
 }
 
-/* ---------------- saved settings ---------------- */
-function loadSaved() {
-  let remember = true;
-  try { remember = localStorage.getItem(REMEMBER_KEY) !== "0"; } catch {}
+
+/* ---------------- saved clients ---------------- */
+function loadClients() {
   try {
-    const v = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
-    if (v && typeof v === "object") return { agent: v.agent || "", mcp: v.mcp || "", remember };
+    const v = JSON.parse(localStorage.getItem(CLIENTS_KEY) || "[]");
+    if (Array.isArray(v)) {
+      state.clients = v
+        .filter((c) => c && typeof c.id === "string" && typeof c.url === "string")
+        .map((c) => ({ id: c.id, name: String(c.name || hostOf(c.url)), url: c.url, agentKey: String(c.agentKey || ""), mcpKey: String(c.mcpKey || "") }));
+    }
+    state.activeId = localStorage.getItem(ACTIVE_KEY);
   } catch {}
-  return { agent: "", mcp: "", remember };
+  // Keys saved by the earlier version of this page (which had a server behind it) are not used any more.
+  try { localStorage.removeItem("swa.settings"); localStorage.removeItem("swa.remember"); } catch {}
 }
 
 function persist() {
   try {
-    localStorage.setItem(REMEMBER_KEY, state.remember ? "1" : "0");
-    if (state.remember) localStorage.setItem(SETTINGS_KEY, JSON.stringify({ agent: state.keys.agent, mcp: state.keys.mcp }));
-    else localStorage.removeItem(SETTINGS_KEY);
+    localStorage.setItem(CLIENTS_KEY, JSON.stringify(state.clients));
+    if (state.activeId) localStorage.setItem(ACTIVE_KEY, state.activeId);
+    else localStorage.removeItem(ACTIVE_KEY);
   } catch {}
 }
 
-/* ---------------- the key form (home screen and settings sheet share it) ---------------- */
-function mountForm(container, idp) {
-  const refs = {};
-  const field = (name, label, hint) => {
-    const input = h("input", { id: `${idp}-${name}`, type: "password", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
-    const reveal = h("button", { class: "reveal", type: "button", "aria-label": `Show or hide ${label}` }, "Show");
-    reveal.addEventListener("click", () => {
-      const show = input.type === "password";
-      input.type = show ? "text" : "password";
-      reveal.textContent = show ? "Hide" : "Show";
+const activeClient = () => state.clients.find((c) => c.id === state.activeId) || null;
+
+// Where the agent usually is: this Codespace's port 9000, or the laptop.
+function defaultAgentUrl() {
+  const m = location.hostname.match(/^(.+)-(\d+)\.app\.github\.dev$/);
+  return m ? `https://${m[1]}-9000.app.github.dev/` : "http://localhost:9000/";
+}
+
+/* ---------------- talking to the agent (A2A over HTTP, straight from the browser) ---------------- */
+class A2AError extends Error {}
+const secretsOf = (c) => [c.agentKey, c.mcpKey];
+
+function cardUrl(client) {
+  const base = client.url.endsWith("/") ? client.url : client.url + "/";
+  return base + ".well-known/agent-card.json";
+}
+
+function a2aHeaders(client, { json = false, sse = false, mcp = false } = {}) {
+  const hd = { Accept: sse ? "text/event-stream" : "application/json" };
+  if (json) hd["Content-Type"] = "application/json";
+  if (client.agentKey) hd["x-api-key"] = client.agentKey;
+  if (mcp && client.mcpKey) hd["X-Mcp-Key"] = client.mcpKey;
+  return hd;
+}
+
+function blockedAsMixedContent(url) {
+  try {
+    const u = new URL(url);
+    return location.protocol === "https:" && u.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+  } catch { return false; }
+}
+
+async function a2aFetch(url, init) {
+  if (blockedAsMixedContent(url)) {
+    throw new A2AError("This page is served over https, so the browser will not call an http address. Use the agent's https URL.");
+  }
+  try { return await fetch(url, init); }
+  catch (err) {
+    throw new A2AError(`Could not reach ${hostOf(url)} (${err.message}). Check the URL and that the agent is running. ` +
+      "If it is, the agent or a gateway in front of it may not accept calls from a web page (CORS), or the port is not public.");
+  }
+}
+
+const rejection = (status) => status === 401
+  ? "The agent rejected the Agent API key (HTTP 401)."
+  : "The agent refused the request (HTTP 403). Check the Agent API key and any gateway rules.";
+
+async function fetchCard(client) {
+  const resp = await a2aFetch(cardUrl(client), { headers: a2aHeaders(client) });
+  if (resp.status === 401 || resp.status === 403) throw new A2AError(rejection(resp.status));
+  if (resp.status !== 200) throw new A2AError(`Agent card request failed with HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+  try { return await resp.json(); } catch { throw new A2AError("The agent card is not valid JSON."); }
+}
+
+// Checks the agent accepts the key without calling the model: ask for a task that does not exist.
+// An agent that accepts the key answers with a JSON-RPC error (task not found); one that rejects it answers 401.
+async function checkAgentKey(client) {
+  const resp = await a2aFetch(client.url, {
+    method: "POST",
+    headers: a2aHeaders(client, { json: true }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: hex(), method: "tasks/get", params: { id: "connect-check" } }),
+  });
+  if (resp.status === 401 || resp.status === 403) throw new A2AError(rejection(resp.status));
+}
+
+// Never throws. Returns { ok, agent } or { ok: false, errors: { agent?: string, connect?: string } }.
+async function connectClient(client) {
+  const secrets = secretsOf(client);
+  const fail = (err) => {
+    const rejected = err instanceof A2AError && /HTTP 40[13]/.test(err.message);
+    return { ok: false, errors: { [rejected ? "agent" : "connect"]: redact(err.message, secrets) } };
+  };
+  let card;
+  try { card = await fetchCard(client); } catch (err) { return fail(err); }
+  try { await checkAgentKey(client); } catch (err) { return fail(err); }
+  return {
+    ok: true,
+    agent: {
+      name: card.name || "A2A agent",
+      description: card.description || "",
+      version: card.version || "",
+      advertised_url: card.url || "",
+      skills: (card.skills || []).map((s) => ({ name: s.name || "", description: s.description || "" })),
+    },
+  };
+}
+
+const partsOf = (message) => (message && message.parts) || [];
+const textOf = (parts) => parts.filter((p) => p.kind === "text").map((p) => p.text || "").join("\n").trim();
+
+function finish(out, st) {
+  if (st.finished) return;
+  if (!st.textSeen && st.artifactText) { out.push({ type: "text", text: st.artifactText }); st.textSeen = true; }
+  out.push({ type: "done", turns: 0, duration_ms: Math.round(performance.now() - st.t0) });
+  st.finished = true;
+}
+
+// One A2A streaming result object -> chat events. `st` carries across calls.
+function mapResult(result, st) {
+  const out = [];
+  const kind = result.kind;
+  if (kind === "status-update") {
+    const status = result.status || {};
+    const s = status.state;
+    const parts = partsOf(status.message);
+    const events = parts
+      .filter((p) => p.kind === "data" && p.data && typeof p.data === "object" && (p.data.event === "tool_call" || p.data.event === "tool_result"))
+      .map((p) => p.data);
+    for (const d of events) {
+      if (d.event === "tool_call") out.push({ type: "tool_call", id: d.id || "", name: d.name || "", input: d.input || {} });
+      else out.push({ type: "tool_result", id: d.id || "", content: d.content || "", is_error: !!d.is_error });
+    }
+    const text = textOf(parts);
+    if (s === "failed" || s === "rejected" || s === "canceled") {
+      out.push({ type: "error", message: text || `The agent ended the task as '${s}'.` });
+      st.finished = true;
+    } else if (s === "input-required" || s === "auth-required") {
+      out.push({ type: "error", message: text || `The agent needs more input (${s}).` });
+      st.finished = true;
+    } else {
+      if (text && !events.length) { out.push({ type: "text", text }); st.textSeen = true; }
+      if (s === "completed") finish(out, st);
+    }
+  } else if (kind === "artifact-update") {
+    st.artifactText = ((st.artifactText || "") + textOf(partsOf(result.artifact))).trim();
+  } else if (kind === "message") {
+    const text = textOf(partsOf(result));
+    if (text) { out.push({ type: "text", text }); st.textSeen = true; }
+  } else if (kind === "task") {
+    const status = result.status || {};
+    for (const artifact of result.artifacts || []) st.artifactText = ((st.artifactText || "") + "\n" + textOf(partsOf(artifact))).trim();
+    if (status.state === "failed") {
+      out.push({ type: "error", message: textOf(partsOf(status.message)) || "The agent failed." });
+      st.finished = true;
+    } else if (status.state === "completed") finish(out, st);
+  }
+  return out;
+}
+
+// One chat turn: message/stream, read as a server-sent-event stream. Yields chat events.
+// Each call stands alone; earlier turns go along as a data part.
+async function* streamChat(client, messages) {
+  const secrets = secretsOf(client);
+  const history = messages.slice(0, -1);
+  const last = messages[messages.length - 1];
+  const parts = [];
+  if (history.length) parts.push({ kind: "data", data: { history } });
+  parts.push({ kind: "text", text: last.content });
+  const payload = {
+    jsonrpc: "2.0", id: hex(), method: "message/stream",
+    params: { message: { kind: "message", role: "user", messageId: hex(), parts } },
+  };
+  const st = { t0: performance.now() };
+  try {
+    const resp = await a2aFetch(client.url, {
+      method: "POST",
+      headers: a2aHeaders(client, { json: true, sse: true, mcp: true }),
+      body: JSON.stringify(payload),
     });
-    const error = h("div", { class: "field-error" });
-    container.append(h("label", { for: `${idp}-${name}` }, label), h("div", { class: "pwd" }, input, reveal), h("div", { class: "hint" }, hint), error);
+    if (resp.status !== 200) {
+      const body = (await resp.text()).slice(0, 400);
+      yield { type: "error", message: redact(`Agent returned HTTP ${resp.status}: ${body}`, secrets) };
+      return;
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += done ? dec.decode() : dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0 || (done && buf)) {
+        let line;
+        if (nl >= 0) { line = buf.slice(0, nl); buf = buf.slice(nl + 1); } else { line = buf; buf = ""; }
+        line = line.replace(/\r$/, "");
+        if (!line.startsWith("data:")) continue;
+        let obj;
+        try { obj = JSON.parse(line.slice(5).trim()); } catch { continue; }
+        if (obj.error) {
+          yield { type: "error", message: redact(`A2A error ${obj.error.code}: ${obj.error.message}`, secrets) };
+          return;
+        }
+        for (const ev of mapResult(obj.result || {}, st)) {
+          if (ev.message) ev.message = redact(ev.message, secrets);
+          yield ev;
+        }
+      }
+      if (done) break;
+    }
+  } catch (err) {
+    const text = err instanceof A2AError ? err.message : `${err.name}: ${err.message}`;
+    yield { type: "error", message: redact(text, secrets) };
+    return;
+  }
+  if (!st.finished) {
+    const out = [];
+    finish(out, st);
+    for (const ev of out) yield ev;
+  }
+}
+
+
+/* ---------------- the clients list and form (home screen and settings sheet share it) ---------------- */
+function mountClients(container, idp) {
+  const view = { editing: undefined };   // undefined: form closed, null: a new client, string: the client being edited
+  const listEl = h("div", { class: "clist" });
+  const form = h("div", { class: "cform", hidden: true });
+  const formTitle = h("h3", {}, "Add a client");
+  const status = h("div", { class: "cstatus" });
+  const msg = h("div", { class: "field-error" });
+  const refs = {};
+  form.append(formTitle);
+
+  const addField = (name, label, hint, { secret = false, placeholder = "", mode = "" } = {}) => {
+    const input = h("input", {
+      id: `${idp}-${name}`, type: secret ? "password" : "text", class: secret ? "" : "plain", placeholder,
+      inputmode: mode || false, autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false",
+    });
+    let control = input;
+    if (secret) {
+      const reveal = h("button", { class: "reveal", type: "button", "aria-label": `Show or hide ${label}` }, "Show");
+      reveal.addEventListener("click", () => {
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        reveal.textContent = show ? "Hide" : "Show";
+      });
+      control = h("div", { class: "pwd" }, input, reveal);
+    }
+    const error = h("div", { class: "field-error", id: `${idp}-${name}-error` });
+    input.setAttribute("aria-describedby", error.id);
+    form.append(h("label", { for: `${idp}-${name}` }, label), control, h("div", { class: "hint" }, hint), error);
     refs[name] = input;
     refs[name + "Error"] = error;
   };
-  field("agent", "Agent API key", state.cfg.key_from_env
-    ? "This server already has a key configured, so you can leave this blank."
-    : "Needed when the agent sets AGENT_API_KEYS. Leave blank if it does not.");
-  field("mcp", "MCP API key", "Decides whose watchlist you see. Leave blank to use the agent's default.");
-  const remember = h("input", { type: "checkbox", id: `${idp}-remember` });
-  container.append(h("label", { class: "check", for: `${idp}-remember` }, remember, "Remember on this device"));
-  refs.remember = remember;
-  return refs;
+  addField("name", "Name", "Optional. How this client is listed. Defaults to the address.", { placeholder: "Codespace" });
+  addField("url", "Agent URL", "The agent's own address, or the AI Gateway proxy's. This page calls it straight from your browser.", { mode: "url", placeholder: "https://" });
+  addField("agent", "Agent API key", "Sent as x-api-key. Needed when the agent sets AGENT_API_KEYS; leave blank if it does not.", { secret: true });
+  addField("mcp", "MCP API key (optional)", "Decides whose watchlist you see. Leave blank and the agent uses its own MCP_API_KEY, or else the agent key above.", { secret: true });
+
+  const saveBtn = h("button", { class: "btn", id: `${idp}-save`, type: "button" }, "Save and connect");
+  const cancelBtn = h("button", { class: "btn quiet", type: "button" }, "Cancel");
+  form.append(h("div", { class: "cbar" }, saveBtn, cancelBtn));
+  const addBtn = h("button", { class: "btn quiet", type: "button" }, "Add client");
+  const clearBtn = h("button", { class: "btn quiet", type: "button" }, "Delete all clients");
+  container.append(listEl, h("div", { class: "cbar" }, addBtn, clearBtn), form, status, msg);
+
+  view.render = () => {
+    listEl.replaceChildren(...state.clients.map((c) => {
+      const live = c.id === state.activeId && state.connected;
+      return h("div", { class: "crow" + (live ? " active" : "") },
+        h("button", { class: "cmain", type: "button", onclick: () => activateClient(c, view) },
+          h("span", { class: "cname" }, h("span", { class: "ctext" }, c.name), live ? h("span", { class: "chip" }, "connected") : null),
+          h("span", { class: "curl" }, c.url)),
+        h("div", { class: "cactions" },
+          h("button", { class: "btn quiet tiny", type: "button", onclick: () => view.openForm(c) }, "Edit"),
+          h("button", { class: "btn quiet tiny", type: "button", onclick: () => deleteClient(c) }, "Delete")));
+    }));
+    const open = view.editing !== undefined;
+    form.hidden = !open;
+    addBtn.hidden = open;
+    clearBtn.hidden = open || state.clients.length === 0;
+  };
+  view.openForm = (client) => {
+    view.editing = client ? client.id : null;
+    formTitle.textContent = client ? "Edit client" : "Add a client";
+    refs.name.value = client ? client.name : "";
+    refs.url.value = client ? client.url : defaultAgentUrl();
+    refs.agent.value = client ? client.agentKey : "";
+    refs.mcp.value = client ? client.mcpKey : "";
+    view.clearErrors();
+    view.render();
+    if (!isTouch.matches) refs.name.focus();
+  };
+  view.closeForm = () => { view.editing = undefined; view.clearErrors(); view.render(); };
+  view.clearErrors = () => {
+    for (const k of ["name", "url", "agent", "mcp"]) refs[k + "Error"].textContent = "";
+    msg.textContent = "";
+  };
+  view.showErrors = (e) => {
+    if (view.editing !== undefined) {
+      refs.agentError.textContent = e.agent || "";
+      msg.textContent = e.connect || "";
+    } else {
+      msg.textContent = [e.connect, e.agent].filter(Boolean).join("\n");
+    }
+  };
+  view.setBusy = (on, name) => {
+    status.textContent = on ? `Connecting to ${name}` : "";
+    saveBtn.disabled = on;
+    saveBtn.textContent = on ? "Connecting" : "Save and connect";
+  };
+
+  async function save() {
+    if (connecting) return;
+    view.clearErrors();
+    const url = refs.url.value.trim();
+    if (!/^https?:\/\/[^\s/]+/i.test(url)) {
+      refs.urlError.textContent = "Enter the agent's address, starting with http:// or https://";
+      return;
+    }
+    const prev = state.clients.find((c) => c.id === view.editing);
+    const client = {
+      id: prev ? prev.id : uuid(),
+      name: refs.name.value.trim() || hostOf(url),
+      url,
+      agentKey: refs.agent.value.trim(),
+      mcpKey: refs.mcp.value.trim(),
+    };
+    await activateClient(client, view, { save: true });
+  }
+  saveBtn.addEventListener("click", save);
+  cancelBtn.addEventListener("click", view.closeForm);
+  addBtn.addEventListener("click", () => view.openForm(null));
+  clearBtn.addEventListener("click", deleteAll);
+  for (const k of ["name", "url", "agent", "mcp"]) {
+    refs[k].addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
+  }
+  return view;
 }
 
-function fillForm(refs) {
-  refs.agent.value = state.keys.agent;
-  refs.mcp.value = state.keys.mcp;
-  refs.remember.checked = state.remember;
-  clearFormErrors(refs);
-}
-function readForm(refs) {
-  return { keys: { agent: refs.agent.value.trim(), mcp: refs.mcp.value.trim() }, remember: refs.remember.checked };
-}
-function clearFormErrors(refs) { refs.agentError.textContent = ""; refs.mcpError.textContent = ""; }
+const renderViews = () => views.forEach((v) => v.render());
 
-/* ---------------- connecting ---------------- */
-async function tryConnect(keys) {
-  const r = await fetch("/api/connect", { method: "POST", headers: authHeaders(false, keys) });
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) return { ok: false, errors: body.errors || { connect: `Request failed (${r.status})` } };
-  return { ok: true, agent: body };
+// Connect to a client and, if that works, make it the active one. `save` stores the client first (add or edit).
+async function activateClient(client, view, { save = false } = {}) {
+  if (connecting) return false;
+  connecting = true;
+  view.clearErrors();
+  view.setBusy(true, client.name);
+  let res;
+  try { res = await connectClient(client); }
+  finally { connecting = false; view.setBusy(false); }
+  if (!res.ok) { view.showErrors(res.errors); return false; }
+
+  const prev = activeClient();
+  const changed = !state.connected || !prev || prev.id !== client.id
+    || prev.url !== client.url || prev.agentKey !== client.agentKey || prev.mcpKey !== client.mcpKey;
+  if (save) {
+    const i = state.clients.findIndex((c) => c.id === client.id);
+    if (i >= 0) state.clients[i] = client; else state.clients.push(client);
+  }
+  state.activeId = client.id;
+  persist();
+  closeSettings();
+  views.forEach((v) => v.closeForm());
+  enterApp(res.agent, client, { reset: changed });   // a different client or account starts a fresh chat
+  return true;
 }
 
-async function connectSafely(keys) {
-  try { return await tryConnect(keys); }
-  catch (err) { return { ok: false, errors: { connect: `Could not reach the backend: ${err.message}` } }; }
+function deleteClient(c) {
+  if (!confirm(`Delete the client "${c.name}"? Its saved keys are removed from this device.`)) return;
+  state.clients = state.clients.filter((x) => x.id !== c.id);
+  if (state.activeId === c.id) {
+    state.activeId = null;
+    state.connected = false;
+    closeSettings();
+    showScreen("connect");
+  }
+  persist();
+  renderViews();
+  if (!state.clients.length) homeView.openForm(null);
+}
+
+function deleteAll() {
+  if (!confirm("Delete all clients? Their saved keys are removed from this device.")) return;
+  state.clients = [];
+  state.activeId = null;
+  state.connected = false;
+  persist();
+  closeSettings();
+  showScreen("connect");
+  renderViews();
+  homeView.openForm(null);
 }
 
 function showScreen(which) {
@@ -580,77 +906,26 @@ function showScreen(which) {
   $("#app").hidden = which !== "app";
 }
 
-function enterApp(agent, { reset }) {
+function enterApp(agent, client, { reset }) {
   state.connected = true;
   showScreen("app");
-  $("#account").textContent = state.keys.mcp ? "key ending " + state.keys.mcp.slice(-4) : "agent default";
-  renderAgent(agent);
+  $("#account").textContent = client.name;
+  renderAgent(agent, client);
+  renderViews();
   applySide();
   if (reset) resetChat();
   if (!isTouch.matches) $("#input").focus();
 }
 
-async function submitHome() {
-  const { keys, remember } = readForm(homeForm);
-  clearFormErrors(homeForm);
-  $("#home-error").textContent = "";
-  const btn = $("#home-connect");
-  btn.disabled = true;
-  btn.textContent = "Connecting";
-  const res = await connectSafely(keys);
-  btn.disabled = false;
-  btn.textContent = "Connect";
-  if (!res.ok) {
-    homeForm.agentError.textContent = res.errors.agent || "";
-    $("#home-error").textContent = res.errors.connect || res.errors.config || "";
-    return;
-  }
-  state.keys = keys;
-  state.remember = remember;
-  persist();
-  enterApp(res.agent, { reset: true });
-}
-
 /* ---------------- settings sheet ---------------- */
 function openSettings() {
-  fillForm(sheetForm);
-  $("#settings-msg").textContent = "";
+  sheetView.closeForm();
   $("#settings-scrim").hidden = false;
   $("#settings").hidden = false;
-  if (!isTouch.matches) sheetForm.agent.focus();
 }
 function closeSettings() {
   $("#settings-scrim").hidden = true;
   $("#settings").hidden = true;
-}
-
-async function saveSettings() {
-  const { keys, remember } = readForm(sheetForm);
-  clearFormErrors(sheetForm);
-  const msg = $("#settings-msg");
-  msg.textContent = "";
-  const btn = $("#settings-save");
-  btn.disabled = true;
-  btn.textContent = "Connecting";
-  const res = await connectSafely(keys);
-  btn.disabled = false;
-  btn.textContent = "Save and reconnect";
-  if (!res.ok) {
-    sheetForm.agentError.textContent = res.errors.agent || "";
-    msg.textContent = res.errors.connect || res.errors.config || "";
-    return;
-  }
-  const accountChanged = keys.mcp !== state.keys.mcp;
-  state.keys = keys;
-  state.remember = remember;
-  persist();
-  closeSettings();
-  enterApp(res.agent, { reset: accountChanged });   // a different account starts a fresh chat
-}
-
-function forgetSaved() {
-  try { localStorage.removeItem(SETTINGS_KEY); } catch {}
-  $("#settings-msg").textContent = "Saved keys removed from this device. This page keeps working until you reload.";
 }
 
 /* ---------------- agent panel ---------------- */
@@ -666,32 +941,38 @@ function toggleSide() {
   applySide();
 }
 
-// In a Codespace, a card URL that says localhost is shown as the forwarded address instead.
-function displayCardUrl(url) {
-  try {
-    const u = new URL(url);
-    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
-    const m = location.hostname.match(/^(.+)-(\d+)\.app\.github\.dev$/);
-    if (local && m) return `https://${m[1]}-${u.port || 9000}.app.github.dev${u.pathname}`;
-  } catch {}
-  return url;
+
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = h("textarea", { style: "position:fixed;opacity:0" }, text);
+    document.body.append(ta); ta.select();
+    try { document.execCommand("copy"); } catch {}
+    ta.remove();
+  }
+  const old = btn.textContent;
+  btn.textContent = "Copied";
+  setTimeout(() => { btn.textContent = old; }, 1400);
 }
 
-function renderAgent(agent) {
+
+function renderAgent(agent, client) {
+  $("#agent-client").textContent = `Client: ${client.name}`;
   $("#agent-title").textContent = `${agent.name} is connected`;
   $("#agent-version").textContent = agent.version ? `Version ${agent.version}` : "";
   $("#agent-desc").textContent = agent.description || "";
 
-  const shown = displayCardUrl(state.cfg.agent_card_url);
+  const shown = cardUrl(client);
   $("#card-url").textContent = shown;
   $("#card-open").setAttribute("href", shown);
+  // A card that advertises localhost cannot be reached by other A2A clients (this page does not care: it uses the URL you typed).
   const warn = $("#card-warn");
   const advertised = agent.advertised_url || "";
-  const inCodespace = /\.app\.github\.dev$/.test(location.hostname);
-  warn.hidden = !(inCodespace && /^https?:\/\/(localhost|127\.0\.0\.1)/.test(advertised));
+  const isLocal = (u) => /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(u);
+  warn.hidden = !(isLocal(advertised) && !isLocal(client.url));
   if (!warn.hidden) {
-    warn.textContent = "The card advertises " + advertised + ", which other callers cannot reach. " +
-      "Set A2A_PUBLIC_URL to this Codespace's port 9000 address in .env, then run: bash scripts/start.sh --restart";
+    warn.textContent = `The card advertises ${advertised}, which other A2A clients cannot reach. ` +
+      "Set A2A_PUBLIC_URL on the agent to its public address and restart it.";
   }
 
   const box = $("#tools");
@@ -705,19 +986,6 @@ function renderAgent(agent) {
       h("div", { class: "n" }, s.name),
       s.description ? h("div", { class: "d" }, s.description) : null));
   }
-}
-
-async function copyText(text, btn) {
-  try { await navigator.clipboard.writeText(text); }
-  catch {
-    const ta = h("textarea", { style: "position:fixed;opacity:0" }, text);
-    document.body.append(ta); ta.select();
-    try { document.execCommand("copy"); } catch {}
-    ta.remove();
-  }
-  const old = btn.textContent;
-  btn.textContent = "Copied";
-  setTimeout(() => { btn.textContent = old; }, 1400);
 }
 
 /* ---------------- chat ---------------- */
@@ -797,7 +1065,8 @@ function setThinking(ctx, on) {
 
 async function send(text) {
   text = (text || "").trim();
-  if (!text || state.busy) return;
+  const client = activeClient();
+  if (!text || state.busy || !client) return;
   state.busy = true;
   $("#send-btn").disabled = true;
   $("#input").value = "";
@@ -810,35 +1079,10 @@ async function send(text) {
   const ctx = { calls: {}, said: [], steps: null, thinking: null };
   setThinking(ctx, true);
   try {
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: authHeaders(true),
-      body: JSON.stringify({ messages: state.history }),
-    });
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({}));
-      const e = body.errors || {};
-      setThinking(ctx, false);
-      addRow(h("div", { class: "err" }, Object.values(e).join("\n") || `Request failed (${r.status})`));
-      return;
-    }
-    const reader = r.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf("\n\n")) >= 0) {
-        const chunk = buf.slice(0, i);
-        buf = buf.slice(i + 2);
-        if (chunk.startsWith("data: ")) handle(JSON.parse(chunk.slice(6)), ctx);
-      }
-    }
+    for await (const ev of streamChat(client, state.history)) handle(ev, ctx);
   } catch (err) {
     setThinking(ctx, false);
-    addRow(h("div", { class: "err" }, `Connection problem: ${err.message}`));
+    addRow(h("div", { class: "err" }, `Connection problem: ${redact(err.message, secretsOf(client))}`));
   } finally {
     setThinking(ctx, false);
     if (ctx.said.length) state.history.push({ role: "assistant", content: ctx.said.join("\n\n") });
@@ -901,55 +1145,41 @@ function setupViewport() {
 /* ---------------- boot ---------------- */
 async function boot() {
   setupViewport();
-
-  try { state.cfg = await (await fetch("/api/config")).json(); }
-  catch (err) {
-    state.cfg = { agent_card_url: "", key_from_env: false };
-    showScreen("connect");
-    homeForm = mountForm($("#home-form"), "h");
-    $("#home-error").textContent = `Could not reach the backend: ${err.message}`;
-    return wire();
-  }
-  homeForm = mountForm($("#home-form"), "h");
-  sheetForm = mountForm($("#settings-form"), "s");
+  loadClients();
+  homeView = mountClients($("#home-clients"), "h");
+  sheetView = mountClients($("#settings-clients"), "s");
+  views.push(homeView, sheetView);
   wire();
 
-  const saved = loadSaved();
-  state.keys = { agent: saved.agent, mcp: saved.mcp };
-  state.remember = saved.remember;
   let side = null;
   try { side = localStorage.getItem(SIDE_KEY); } catch {}
   state.sideOpen = side ? side === "open" : !isMobile.matches;
 
-  // Connect on load with whatever is saved (or the server's own key). Only ask when that fails.
-  const res = await connectSafely(state.keys);
-  if (res.ok) return enterApp(res.agent, { reset: true });
-
-  fillForm(homeForm);
+  // Connect on load to the client used last. Only show the home screen when that fails (or there is none yet).
+  const client = activeClient() || state.clients[0];
+  if (!client) {
+    showScreen("connect");
+    renderViews();
+    homeView.openForm(null);
+    return;
+  }
+  const res = await connectClient(client);
+  if (res.ok) {
+    state.activeId = client.id;
+    persist();
+    return enterApp(res.agent, client, { reset: true });
+  }
   showScreen("connect");
-  const e = res.errors;
-  const justNeedsAKey = e.agent && !state.keys.agent && !state.cfg.key_from_env;   // first visit: a prompt, not an error
-  homeForm.agentError.textContent = justNeedsAKey ? "" : (e.agent || "");
-  $("#home-error").textContent = e.connect || e.config || "";
-  if (!isTouch.matches) homeForm.agent.focus();
+  renderViews();
+  homeView.openForm(client);
+  homeView.showErrors(res.errors);
 }
 
 function wire() {
-  $("#home-connect").addEventListener("click", submitHome);
-  for (const refs of [homeForm, sheetForm].filter(Boolean))
-    for (const input of [refs.agent, refs.mcp])
-      input.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter") return;
-        e.preventDefault();
-        (refs === homeForm ? submitHome : saveSettings)();
-      });
   $("#settings-open").addEventListener("click", openSettings);
   $("#account-pill").addEventListener("click", openSettings);
   $("#settings-close").addEventListener("click", closeSettings);
-  $("#settings-cancel").addEventListener("click", closeSettings);
   $("#settings-scrim").addEventListener("click", closeSettings);
-  $("#settings-save").addEventListener("click", saveSettings);
-  $("#settings-forget").addEventListener("click", forgetSaved);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#settings").hidden) closeSettings(); });
   $("#side-toggle").addEventListener("click", toggleSide);
   $("#side-scrim").addEventListener("click", toggleSide);

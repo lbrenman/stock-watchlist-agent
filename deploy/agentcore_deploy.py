@@ -108,9 +108,11 @@ def main() -> int:
             return 1
 
     url = f"https://bedrock-agentcore.{args.region}.amazonaws.com/runtimes/{quote(arn, safe='')}/invocations/"
-    auth = "bearer" if args.jwt_discovery_url else "sigv4"
-    print("\nPoint the chat UI (or the CLI probe) at this agent with:")
-    print(f"  A2A_AGENT_URL={url}\n  A2A_AUTH_MODE={auth}\n  A2A_REGION={args.region}\n  A2A_API_KEY=<one of your AGENT_API_KEYS>")
+    auth = "a JWT bearer token" if args.jwt_discovery_url else "AWS credentials (a SigV4 signature)"
+    print("\nThe agent's A2A address (JSON-RPC is POSTed here; the card is at <address>.well-known/agent-card.json):")
+    print(f"  {url}")
+    print(f"Callers present {auth} to AgentCore, and also send x-api-key (one of your AGENT_API_KEYS).")
+    print("The web page cannot call this runtime directly: a browser cannot sign SigV4 requests, and the page has no bearer-token field.")
     return 0
 
 

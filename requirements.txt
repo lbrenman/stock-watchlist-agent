@@ -1,5 +1,5 @@
 claude-agent-sdk
-fastapi
+fastapi   # provides starlette, whose CORS middleware the agent uses for browser calls
 uvicorn[standard]
 python-dotenv
 httpx

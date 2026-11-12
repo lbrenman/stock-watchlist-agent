@@ -1,11 +1,11 @@
 """Configuration: environment variables only.
 
-Two programs read it:
-  * the A2A agent (python -m app.a2a_server) needs the model route, the MCP server and, optionally, inbound keys;
-  * the chat UI server (uvicorn app.server:app) only needs to know where the agent is (A2A_AGENT_URL).
+The agent (python -m app.a2a_server) is the only program that reads it. It needs the model route, the MCP server
+and, optionally, inbound keys. The web page in web/ has no server and no configuration: it is given an agent's
+address and keys in the browser.
 
-Each endpoint (model, MCP server, A2A agent) has its own config object with its own auth mode, so adding
-OAuth later means touching auth.py, not the agent logic.
+Each endpoint (model, MCP server) has its own config object with its own auth mode, so adding OAuth later means
+touching auth.py, not the agent logic.
 
 Model route (set on the agent):
   * ANTHROPIC_API_KEY set   -> call Anthropic directly (dev fallback, bypasses the gateway)
@@ -81,22 +81,6 @@ class Settings:
     max_turns: int
 
 
-@dataclass(frozen=True)
-class A2ATarget:
-    """The A2A agent the chat UI talks to (local, Codespace, or AgentCore)."""
-
-    url: str  # the agent's JSON-RPC endpoint, exactly as its card advertises it
-    auth_mode: str  # "none" | "bearer" | "sigv4": how to authenticate to the agent's host
-    bearer_token: str | None
-    region: str | None  # for sigv4
-    api_key: str | None = None  # x-api-key sent when the user has not typed one in the UI
-
-
-@dataclass(frozen=True)
-class UiSettings:
-    target: A2ATarget
-
-
 def load_settings() -> Settings:
     server_name = _optional("MCP_SERVER_NAME", "stockwatchlist")
     if not re.fullmatch(r"[A-Za-z0-9_-]+", server_name):
@@ -136,26 +120,6 @@ def load_settings() -> Settings:
             default_api_key=_optional("MCP_API_KEY") or None,
         ),
         max_turns=int(_optional("AGENT_MAX_TURNS", "15")),
-    )
-
-
-def load_ui_settings() -> UiSettings:
-    """Settings for the chat UI server. A2A_AGENT_URL defaults to the agent on this machine (port 9000)."""
-    auth_mode = _optional("A2A_AUTH_MODE", "none").lower()
-    if auth_mode not in ("none", "bearer", "sigv4"):
-        raise RuntimeError("A2A_AUTH_MODE must be 'none', 'bearer' or 'sigv4'")
-    default_url = f"http://localhost:{_optional('A2A_PORT', '9000')}/"
-    # The access key comes from the environment: A2A_API_KEY, else the first AGENT_API_KEYS entry, so a single
-    # .env serves both the agent and the UI. (When the UI runs apart from the agent, set A2A_API_KEY.)
-    first_agent_key = next((k.strip() for k in _optional("AGENT_API_KEYS").split(",") if k.strip()), "")
-    return UiSettings(
-        target=A2ATarget(
-            url=_optional("A2A_AGENT_URL") or default_url,
-            auth_mode=auth_mode,
-            bearer_token=_optional("A2A_BEARER_TOKEN") or None,
-            region=_optional("A2A_REGION") or _optional("AWS_REGION") or None,
-            api_key=_optional("A2A_API_KEY") or first_agent_key or None,
-        )
     )
 
 

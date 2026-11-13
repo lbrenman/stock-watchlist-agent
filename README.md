@@ -141,7 +141,7 @@ who clicks it gets their own Codespace without your keys and must supply their o
 8. **Add a client the first time.** The URL is filled in with this Codespace's port 9000 address. Enter the Agent API key
    (one of your `AGENT_API_KEYS`) and, if you want, an MCP API key (leave it blank to use the agent's default, see "Which MCP
    key the agent uses"). Choose **Save and connect**. The client is saved in this browser, and from then on the page
-   connects by itself and opens straight to the chat. You only see the home screen if that connection fails (the message
+   connects by itself and opens straight to the chat. You only see the home screen if that connection fails, or after you choose Disconnect (the message
    says why).
 9. **Chat.** Click a suggested prompt (blue = reads data, amber = changes it) or type your own. After the first message the
    prompts stay available as chips above the message box. Each tool call is one collapsed line; click it for the input and
@@ -296,8 +296,13 @@ its own calls.
   does not connect is not stored, and what you typed stays in the form.
 - **Where they are kept.** In this browser's local storage, in plain text, keys included. Use it on private devices only.
   Nothing is sent anywhere except to the agent URL of the client you are using.
-- **Connects on load** to the client used last, and shows the home screen only when that fails (or when there is no client
-  yet). The first time, the URL is filled in for you: the agent on this machine, or this Codespace's port 9000.
+- **Connects on load** to the client used last, and shows the home screen when that fails, when there is no client yet, or
+  when no client is marked as used last (after **Disconnect**, or after you delete the one used last). The first time, the
+  URL is filled in for you: the agent on this machine, or this Codespace's port 9000.
+- **Disconnect** (in the agent panel, next to Copy and Open) goes back to the home screen with your saved clients listed. It
+  clears the chat, cancels a reply that is still streaming, and keeps your clients and the Events list. No client is marked as
+  used last, so a reload stays on the home screen until you pick one. On a phone it also closes the agent drawer. Switching to
+  another client while a reply is streaming cancels that reply the same way.
 - **Agent panel:** the button at the top left shows or hides it (open by default on a desktop, closed on a phone, remembered
   per device). It shows the client, the agent, its card URL (Copy and Open) and its skills, and never opens by itself.
 - **MCP connection.** The first line of an answer says whether the MCP server connected and which tools loaded (collapsed;
@@ -419,6 +424,11 @@ key each fail; switching the MCP API key returned each account's own watchlist (
 proxy of the agent worked with the old page, passed `X-Mcp-Key` through, and rejected calls that carry no credentials.
 
 Tested in a sandbox without the real SDKs or a browser, on the current code:
+- *Disconnect, in the same fake browser:* the button in the agent panel; it shows the home screen with the clients listed and
+  none connected, clears the chat, keeps the clients and the events, and marks no client as used last; a reload then stays on
+  the home screen and makes no request (also after deleting the client used last); picking a client connects with a clean
+  chat; a reply that is still streaming is cancelled (by Disconnect, and by switching clients), the page is not left busy, the
+  Events screen records the turn as cancelled, and nothing from it reaches the next chat; on a phone the drawer closes.
 - *The Events screen, in the same fake browser:* the request and response of the card fetch, key check and a chat turn
   (URL, headers, body, status, duration), masking and Show keys, a key echoed in an error body, Copy this event and Copy all
   always masked, Clear, the 200-event cap, a failed request that never got a response, a 401, a stream cut off half way,
@@ -462,7 +472,7 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
   right edge and the tool steps stay inside the screen (the prompt chips once widened the chat past a phone; the CSS now
   lets that column shrink, checked by reading the CSS, not by rendering it) and the message box hint fits on one line; the
   Events panel fills the screen and its rows and buttons are easy to tap; the top bar and message box clear the notch and the home
-  indicator; the agent panel slides in and a tap outside closes it; prompt chips and tables scroll sideways.
+  indicator; the agent panel slides in, Copy, Open and Disconnect fit on one row (or wrap) in it, and a tap outside closes it; prompt chips and tables scroll sideways.
 - **Proxy model route:** needs `/v1/messages`, streaming, tool use, `x-api-key`, and your `MODEL_NAME`.
   If it rejects `anthropic-beta` headers, keep `MODEL_DISABLE_BETAS=1`.
 - **AgentCore:** that the SDK's bundled CLI starts in an ARM64 AgentCore container, that the runtime can reach your

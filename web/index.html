@@ -132,7 +132,7 @@
   .agent-sub { color: var(--muted); font-size: 12.5px; }
   .agent-desc { color: var(--ink-2); font-size: 13.5px; margin: 8px 0 0; }
   .url { font-family: var(--mono); font-size: 12px; color: var(--ink); word-break: break-all; line-height: 1.45; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 5.4em; overflow: auto; }
-  .card-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .card-warn { color: var(--write); font-size: 12.5px; margin-top: 10px; }
   .tool { padding: 9px 11px 9px 13px; border: 1px solid var(--line); border-left: 3px solid var(--ink); border-radius: 10px; margin-bottom: 8px; background: var(--panel); }
   .tool .n { font-family: var(--mono); font-size: 12.5px; font-weight: 500; word-break: break-all; }
@@ -380,6 +380,7 @@
           <div class="card-actions">
             <button class="btn quiet tiny" id="card-copy" type="button">Copy</button>
             <a class="btn quiet tiny" id="card-open" target="_blank" rel="noopener">Open</a>
+            <button class="btn quiet tiny" id="disconnect" type="button">Disconnect</button>
           </div>
           <div class="card-warn" id="card-warn" hidden></div>
         </div>
@@ -444,7 +445,7 @@ const $ = (s) => document.querySelector(s);
 const CLIENTS_KEY = "swa.clients";   // saved clients, keys included (plain text, on this device only)
 const ACTIVE_KEY = "swa.active";     // id of the client last connected
 const SIDE_KEY = "swa.side";         // "open" | "closed", the agent panel
-const state = { clients: [], activeId: null, history: [], busy: false, connected: false, sideOpen: false, revealKeys: false };
+const state = { clients: [], activeId: null, history: [], busy: false, connected: false, sideOpen: false, revealKeys: false, turn: 0, abort: null };
 const isMobile = window.matchMedia("(max-width: 860px)");
 const isTouch = window.matchMedia("(pointer: coarse)");
 let homeView, sheetView;
@@ -656,6 +657,10 @@ async function a2aFetch(client, kind, url, init) {
   let resp;
   try { resp = await fetch(url, init); }
   catch (err) {
+    if (err.name === "AbortError") {
+      endEvent(ev, "Cancelled by the page (disconnected, or switched to another client).");
+      throw new A2AError("Cancelled.");
+    }
     endEvent(ev, `${err.name}: ${err.message}. No response was received: the request did not complete (network error, CORS refusal, a blocked or closed port).`);
     throw new A2AError(`Could not reach ${hostOf(url)} (${err.message}). Check the URL and that the agent is running. ` +
       "If it is, the agent or a gateway in front of it may not accept calls from a web page (CORS), or the port is not public.");
@@ -787,7 +792,7 @@ function mapResult(result, st) {
 
 // One chat turn: message/stream, read as a server-sent-event stream. Yields chat events.
 // Each call stands alone; earlier turns go along as a data part.
-async function* streamChat(client, messages) {
+async function* streamChat(client, messages, signal) {
   const secrets = secretsOf(client);
   const history = messages.slice(0, -1);
   const last = messages[messages.length - 1];
@@ -805,6 +810,7 @@ async function* streamChat(client, messages) {
       method: "POST",
       headers: a2aHeaders(client, { json: true, sse: true, mcp: true }),
       body: JSON.stringify(payload),
+      signal,
     });
     const resp = sent.resp;
     ev = sent.ev;
@@ -844,6 +850,10 @@ async function* streamChat(client, messages) {
       if (done) break;
     }
   } catch (err) {
+    if (err.name === "AbortError") {   // the page cancelled this turn: nobody is waiting for it
+      if (ev && !ev.done) endEvent(ev, "Cancelled by the page (disconnected, or switched to another client).");
+      return;
+    }
     const text = err instanceof A2AError ? err.message : `${err.name}: ${err.message}`;
     if (ev && !ev.done) endEvent(ev, text);
     yield { type: "error", message: redact(text, secrets) };
@@ -1115,6 +1125,27 @@ async function activateClient(client, view, { save = false } = {}) {
   return true;
 }
 
+// Whatever turn is running is no longer wanted: cancel its request, and let the turn know it is stale.
+function stopTurn() {
+  state.turn++;
+  if (state.abort) { state.abort.abort(); state.abort = null; }
+}
+
+// Back to the home screen. The chat is cleared and a running request is cancelled; the clients and the events are kept.
+// No client is marked as the last one used, so a reload stays on the home screen until you pick one.
+function disconnect() {
+  stopTurn();
+  state.history = [];
+  state.connected = false;
+  state.activeId = null;
+  persist();
+  closeSettings();
+  if (isMobile.matches) { state.sideOpen = false; applySide(); }   // the phone's drawer should not be open when you come back
+  views.forEach((v) => v.closeForm());
+  showScreen("connect");
+  renderViews();
+}
+
 function deleteClient(c) {
   if (!confirm(`Delete the client "${c.name}"? Its saved keys are removed from this device.`)) return;
   state.clients = state.clients.filter((x) => x.id !== c.id);
@@ -1245,6 +1276,7 @@ function renderChips() {
 }
 
 function resetChat() {
+  stopTurn();
   state.history = [];
   $("#chips").hidden = true;
   $("#log").replaceChildren(
@@ -1317,15 +1349,26 @@ async function send(text) {
   addRow(h("div", { class: "msg-user" }, h("div", { class: "bubble" }, text)));
 
   const ctx = { calls: {}, said: [], steps: null, thinking: null };
+  const turn = state.turn;                  // if the chat is reset or disconnected meanwhile, this turn is stale
+  const abort = new AbortController();
+  state.abort = abort;
   setThinking(ctx, true);
   try {
-    for await (const ev of streamChat(client, state.history)) handle(ev, ctx);
+    for await (const ev of streamChat(client, state.history, abort.signal)) {
+      if (turn !== state.turn) break;
+      handle(ev, ctx);
+    }
   } catch (err) {
-    setThinking(ctx, false);
-    addRow(h("div", { class: "err" }, `Connection problem: ${redact(err.message, secretsOf(client))}`));
+    if (turn === state.turn) {
+      setThinking(ctx, false);
+      addRow(h("div", { class: "err" }, `Connection problem: ${redact(err.message, secretsOf(client))}`));
+    }
   } finally {
-    setThinking(ctx, false);
-    if (ctx.said.length) state.history.push({ role: "assistant", content: ctx.said.join("\n\n") });
+    if (state.abort === abort) state.abort = null;
+    if (turn === state.turn) {
+      setThinking(ctx, false);
+      if (ctx.said.length) state.history.push({ role: "assistant", content: ctx.said.join("\n\n") });
+    }
     state.busy = false;
     $("#send-btn").disabled = false;
     if (!isTouch.matches) $("#input").focus();
@@ -1397,12 +1440,13 @@ async function boot() {
   try { side = localStorage.getItem(SIDE_KEY); } catch {}
   state.sideOpen = side ? side === "open" : !isMobile.matches;
 
-  // Connect on load to the client used last. Only show the home screen when that fails (or there is none yet).
-  const client = activeClient() || state.clients[0];
+  // Connect on load to the client used last. Show the home screen when that fails, when there is none yet, or when
+  // none is marked as used last (after Disconnect, or after deleting it): then you pick one.
+  const client = activeClient();
   if (!client) {
     showScreen("connect");
     renderViews();
-    homeView.openForm(null);
+    if (!state.clients.length) homeView.openForm(null);
     return;
   }
   const res = await connectClient(client);
@@ -1437,6 +1481,7 @@ function wire() {
   $("#ev-clear").addEventListener("click", () => { events.length = 0; touchEvents(); });
   $("#side-toggle").addEventListener("click", toggleSide);
   $("#side-scrim").addEventListener("click", toggleSide);
+  $("#disconnect").addEventListener("click", disconnect);
   $("#card-copy").addEventListener("click", () => copyText($("#card-url").textContent, $("#card-copy")));
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
   $("#input").addEventListener("input", autosize);

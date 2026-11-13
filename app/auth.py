@@ -61,6 +61,21 @@ def model_env(cfg: ModelConfig, user_key: str | None) -> dict[str, str]:
     raise UnsupportedAuthMode(f"MODEL_AUTH_MODE '{cfg.auth_mode}' is not implemented yet.")
 
 
+def _mcp_key(cfg: McpConfig, user_key: str | None, agent_key: str | None) -> tuple[str, str]:
+    """The MCP key and where it came from: the caller's X-Mcp-Key, else MCP_API_KEY, else the caller's own x-api-key."""
+    for source, key in (
+        ("X-Mcp-Key header", user_key),
+        ("MCP_API_KEY", cfg.default_api_key),
+        ("x-api-key of the call", agent_key),
+    ):
+        key = (key or "").strip()
+        if key:
+            return key, source
+    raise MissingKeyError(
+        "MCP API key is required. Send X-Mcp-Key, set MCP_API_KEY on the agent, or call the agent with an x-api-key."
+    )
+
+
 def mcp_headers(cfg: McpConfig, user_key: str | None, agent_key: str | None = None) -> dict[str, str]:
     """HTTP headers for the MCP server.
 
@@ -69,12 +84,16 @@ def mcp_headers(cfg: McpConfig, user_key: str | None, agent_key: str | None = No
     server (or the gateway in front of it) has to accept it as an MCP key.
     """
     if cfg.auth_mode == "api_key":
-        key = _first_key(
-            "MCP", user_key, cfg.default_api_key, agent_key,
-            hint=" Send X-Mcp-Key, set MCP_API_KEY on the agent, or call the agent with an x-api-key.",
-        )
-        return {cfg.api_key_header: key}
+        return {cfg.api_key_header: _mcp_key(cfg, user_key, agent_key)[0]}
     raise UnsupportedAuthMode(f"MCP_AUTH_MODE '{cfg.auth_mode}' is not implemented yet.")
+
+
+def mcp_key_source(cfg: McpConfig, user_key: str | None, agent_key: str | None = None) -> str:
+    """Where the MCP key comes from, as a label for logs and the chat. Never the key itself."""
+    try:
+        return _mcp_key(cfg, user_key, agent_key)[1]
+    except MissingKeyError:
+        return "none"
 
 
 # --------------------------------------------------------------------------- #

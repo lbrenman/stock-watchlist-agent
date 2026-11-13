@@ -80,7 +80,8 @@ What that means in practice:
 - If the agent is open (`AGENT_API_KEYS` unset) and the caller sends no `x-api-key`, no `X-Mcp-Key` and `MCP_API_KEY` is empty,
   the run fails with "MCP API key is required."
 
-Keys are never logged and are redacted from errors.
+Each run says which one it used: the agent's log line and the "MCP connection" line in the chat both name the source
+(for example `x-api-key of the call`), never the key itself. Keys are never logged and are redacted from errors.
 
 ## Quick start (laptop)
 
@@ -178,6 +179,9 @@ Secrets are read when the Codespace starts, and `.env` when each process starts:
 bash scripts/start.sh --restart       # stop both, start both, report
 ```
 
+Type the flag exactly: the script refuses an option it does not know and exits with an error, instead of quietly
+reporting that everything is already running on the old settings.
+
 Stopping a Codespace pauses it and keeps its files; deleting it removes `.env` and logs. Both start again
 automatically when it resumes. Saved clients live in your browser, not in the Codespace.
 
@@ -192,6 +196,8 @@ automatically when it resumes. Saved clients live in your browser, not in the Co
 | The home screen appears instead of the chat | The page could not connect to the client it used last. The message under the form says why. |
 | An old key keeps coming back | Keys are saved in this browser with each client. **Clients** > **Edit** or **Delete**, or **Delete all clients**. |
 | The first message fails with an MCP or model error | Wrong or missing MCP key or proxy key, the MCP server does not accept the agent key (when no MCP key is set, see "Which MCP key the agent uses"), or the wrong `MCP_TRANSPORT` (try `sse`). The page cannot check these in advance. For the proxy route, set `MODEL_API_KEY` on the agent. |
+| I edited `.env` or a secret and nothing changed | The agent reads it only when it starts. `bash scripts/start.sh --restart`, then check the first line of `tail /tmp/a2a.log`: it names the model route and `x-api-key` status. |
+| The model says it has no quote tool, or no tools | The agent could not use the MCP server. Open the "MCP connection" line at the top of the answer (it opens itself when a server failed) and the Events screen, and read `/tmp/a2a.log`: `MCP servers: stockwatchlist=failed` and `mcp_key_from=` say what happened. Usual causes: the MCP key was rejected (see "Which MCP key the agent uses"), a wrong `MCP_URL`, or the wrong `MCP_TRANSPORT` (try `sse`). |
 | Card advertises `localhost` | Set `A2A_PUBLIC_URL` as above and restart. |
 | An old `.env` has `AGENT_MODE`, `A2A_AGENT_URL`, `A2A_API_KEY`, `A2A_AUTH_MODE`, `A2A_BEARER_TOKEN` or `A2A_REGION` | They are ignored now; delete the lines. The agent is always its own process, and the web app takes the URL and keys in the browser. |
 
@@ -207,11 +213,27 @@ curl http://localhost:9000/.well-known/agent-card.json
 - **Keys per request:** `x-api-key` (access), `X-Mcp-Key` (whose watchlist) and `X-Model-Key` (proxy key). The last two are
   optional, with the fallbacks described in "Which MCP key the agent uses".
 - **Browsers:** the agent answers CORS preflights and sends CORS headers for any origin. It allows the headers `Content-Type`,
-  `Accept`, `x-api-key`, `X-Mcp-Key`, `X-Model-Key` and the AgentCore session header.
+  `Accept`, `x-api-key`, `X-Mcp-Key`, `X-Model-Key` and the AgentCore session header, and exposes all of its response
+  headers to the page (so the Events screen can show them).
 - **Stateless:** each message stands alone. A caller can add prior turns as a data part
   `{"history": [{"role": "user"|"assistant", "content": "..."}]}` beside the text part; the web app does this.
 - **Streaming:** `message/stream` sends status updates for each tool call and result (a text part plus a data part
-  `{"event": "tool_call"|"tool_result", ...}`), then the final answer as an artifact.
+  `{"event": "tool_call"|"tool_result", ...}`), then the final answer as an artifact. Once at the start of a run it also sends
+  `{"event": "mcp_status", "servers": [...], "tools": [...], "mcp_key_from": "..."}`: whether the MCP server connected
+  (`connected`, `failed`, `needs-auth`, `pending` or `disabled`, as the Agent SDK reports it at the start of a run) and which
+  tools loaded. `pending` is not a failure by itself.
+- **Logs:** to the process's output (`/tmp/a2a.log` with `scripts/start.sh`, so `tail -f /tmp/a2a.log` while you chat). At
+  startup the model route and whether `x-api-key` is required; for each run one `run start` line (route, model, MCP host and
+  transport, where the MCP key came from), the MCP servers and tools, each tool call and result, and `run done`, or the
+  error. Failed tool results and errors are logged with keys redacted. Keys themselves are never logged. uvicorn's own
+  access lines (`POST / ... 200`) go to the same file.
+  ```
+  INFO:agent:run start: route=gateway model=<name> mcp=<gateway-host> (http) mcp_key_from=x-api-key of the call
+  INFO:agent:MCP servers: stockwatchlist=connected; 6 tool(s): AddSymbolToStockWatchList, GetStockQuote, ...
+  INFO:agent:tool call: GetStockWatchList
+  INFO:agent:tool result: ok (120 chars)
+  INFO:agent:run done: 2 turn(s), 5400 ms
+  ```
 - Uses a2a-sdk 0.3.x and the AgentCore SDK's `build_a2a_app`, wrapped with the CORS and key-check middleware and run by
   uvicorn. `/ping` and the card come from the SDK.
 
@@ -273,8 +295,20 @@ any static file host would do.
   yet). The first time, the URL is filled in for you: the agent on this machine, or this Codespace's port 9000.
 - **Agent panel:** the button at the top left shows or hides it (open by default on a desktop, closed on a phone, remembered
   per device). It shows the client, the agent, its card URL (Copy and Open) and its skills, and never opens by itself.
+- **MCP connection.** The first line of an answer says whether the MCP server connected and which tools loaded (collapsed;
+  it opens itself when a server failed, with its error and where the MCP key came from).
 - **Tool calls** appear as one collapsed line each (name, a short input summary, status, time). Open one to see the full input
   and result; a failed call opens itself.
+- **Events.** The **Events** button (top bar, and on the home screen, so it works when connecting fails) opens a panel with
+  every request the page makes to an agent, newest first: the card fetch, the key check and each chat turn. A row shows the
+  time, what it was, the status and the duration; open it for the request (URL, every header the page set, the JSON-RPC body)
+  and the response (status, headers, and the whole body; for a chat turn that is the raw event stream, filling in as it
+  arrives). A request that failed opens itself, and one that never completed says so. Keys (`x-api-key`, `X-Mcp-Key`,
+  `X-Model-Key`, `Authorization`) are masked unless you switch on **Show keys**, and **Copy this event** and **Copy all**
+  always mask them, so what you copy is safe to paste. Events are kept in memory only (the newest 200) and **Clear**
+  empties them. The page cannot see headers the browser adds itself (Origin, User-Agent, Content-Length), and it sees a
+  cross-origin response's headers only when the server exposes them; the agent does, a gateway may not. For a request
+  that failed before any response, the browser's Network tab gives the reason.
 - **Prompts** stay pinned as chips above the message box once a chat has started.
 - **Phones:** the layout uses the full screen height without hiding behind Safari's toolbar or the notch, inputs are sized so
   iOS does not zoom, tables scroll sideways, and on a touch screen Return adds a line (the arrow button sends).
@@ -321,7 +355,7 @@ sign or present a token, or put it behind the gateway.
 - The agent panel shows the card URL the page is using.
 - Ask for your watchlist, then switch to a client with a different MCP key and ask again. Each account should show its own list.
 - A wrong Agent API key fails on connect, with the message under the key field. A wrong MCP key fails on the first message.
-- If connecting says "Could not reach ...", open the browser's developer console: a CORS problem is named there.
+- If connecting says "Could not reach ...", open the Events screen (it shows the request and that nothing came back) and the browser's developer console, which names a CORS problem.
 
 ## Docker
 
@@ -380,7 +414,14 @@ key each fail; switching the MCP API key returned each account's own watchlist (
 proxy of the agent worked with the old page, passed `X-Mcp-Key` through, and rejected calls that carry no credentials.
 
 Tested in a sandbox without the real SDKs or a browser, on the current code:
-- *The agent, with stand-ins for the SDKs:* the MCP key order (`X-Mcp-Key`, then `MCP_API_KEY`, then the caller's `x-api-key`,
+- *The Events screen, in the same fake browser:* the request and response of the card fetch, key check and a chat turn
+  (URL, headers, body, status, duration), masking and Show keys, a key echoed in an error body, Copy this event and Copy all
+  always masked, Clear, the 200-event cap, a failed request that never got a response, a 401, a stream cut off half way,
+  opening from the home screen, a row staying open across redraws; and the MCP connection line (connected, and failed
+  opening itself).
+- *The agent, with stand-ins for the SDKs:* the init message becoming the `mcp_status` event (prefix stripped, only MCP
+  tools, `pending` and `failed`), that event reaching the stream, the log lines for a run, and that no key appears in the
+  log or the status (including a key echoed in an MCP error); the MCP key order (`X-Mcp-Key`, then `MCP_API_KEY`, then the caller's `x-api-key`,
   including blanks and whitespace, a missing key, and the model key staying unchanged); that the executor hands the three
   headers to the agent run; that the agent key is in the redaction list; that `main()` adds the CORS middleware after the
   key middleware; that the key middleware on its own would reject a preflight (which is why the order matters).
@@ -400,12 +441,19 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
 - **The `x-api-key` fallback for the MCP key.** That the agent sees the caller's `x-api-key` the same way it sees `X-Mcp-Key`
   (both are read from the request headers the context builder keeps; only `X-Mcp-Key` has been proven), and that your MCP
   gateway accepts the agent key as an MCP key. Test with `MCP_API_KEY` empty and no `X-Mcp-Key`.
+- **The MCP connection line and the agent's log, with the real SDK.** The init message and its fields follow the Agent SDK's
+  documentation, but the stand-ins I used are mine. Check on a real run that the line shows `connected` and the tool names,
+  and that a wrong MCP key shows `failed`, `needs-auth` or no tools. A server that has a cached tool list can read `pending`
+  at the start and connect on first use.
+- **Response headers on the Events screen,** through the agent (`expose_headers`) and through a gateway proxy, which may not
+  expose them.
 - **Codespaces:** that a page opened from the Private port 8000 can call the Public port 9000.
 - **AI Gateway proxy:** that it answers the CORS preflight; whether it streams tool calls live rather than buffering; and
   `X-Model-Key` through it.
-- **The UI on a desktop browser:** colors, spacing, the new client list and form, the panel collapsing, tables, light and dark mode.
+- **The UI on a desktop browser:** colors, spacing, the new client list and form, the Events panel (long bodies, many rows), the panel collapsing, tables, light and dark mode.
 - **The UI on an iPhone (Safari):** the page fits without scrolling sideways; the clients sheet slides up from the bottom, its
-  list and form are usable, and focusing a field does not zoom; the top bar and message box clear the notch and the home
+  list and form are usable, and focusing a field does not zoom; the Events panel fills the screen and its rows and buttons are
+  easy to tap; the top bar and message box clear the notch and the home
   indicator; the agent panel slides in and a tap outside closes it; prompt chips and tables scroll sideways.
 - **Proxy model route:** needs `/v1/messages`, streaming, tool use, `x-api-key`, and your `MODEL_NAME`.
   If it rejects `anthropic-beta` headers, keep `MODEL_DISABLE_BETAS=1`.

@@ -7,6 +7,9 @@ Public API:
         agent_key  the caller's own x-api-key (optional); the last fallback for the MCP key
 
 Event dicts yielded by run_agent:
+    {"type": "mcp_status", "servers": [{"name", "status", "error"?}], "tools": [str], "mcp_key_from": str}
+        sent once at the start of a run, from the SDK's init message (status: connected, failed, needs-auth,
+        pending or disabled; "pending" is not a failure by itself)
     {"type": "text", "text": str}
     {"type": "tool_call", "id": str, "name": str, "input": dict}
     {"type": "tool_result", "id": str, "content": str, "is_error": bool}
@@ -23,6 +26,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ResultMessage,
+    SystemMessage,
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
@@ -30,7 +34,9 @@ from claude_agent_sdk import (
     query,
 )
 
-from .auth import mcp_headers, model_env
+from urllib.parse import urlsplit
+
+from .auth import mcp_headers, mcp_key_source, model_env
 from .config import Settings
 
 log = logging.getLogger("agent")
@@ -169,6 +175,15 @@ def _events(msg: Any, prefix: str) -> list[dict[str, Any]]:
                     "content": _flatten(block.content),
                     "is_error": bool(block.is_error),
                 })
+    elif isinstance(msg, SystemMessage) and msg.subtype == "init":
+        data = msg.data or {}
+        servers = []
+        for s in data.get("mcp_servers") or []:
+            if isinstance(s, dict):
+                servers.append({"name": str(s.get("name", "")), "status": str(s.get("status", "unknown")),
+                                **({"error": str(s["error"])} if s.get("error") else {})})
+        tools = [t.removeprefix(prefix) for t in data.get("tools") or [] if isinstance(t, str) and t.startswith(prefix)]
+        out.append({"type": "mcp_status", "servers": servers, "tools": tools})
     elif isinstance(msg, ResultMessage):
         if msg.is_error or msg.subtype != "success":
             parts = [msg.result or "", *(msg.errors or [])]
@@ -182,6 +197,28 @@ def _events(msg: Any, prefix: str) -> list[dict[str, Any]]:
     return out
 
 
+def _log_event(event: dict[str, Any], secrets: list[str]) -> None:
+    """One log line per notable event. Keys never appear: the values are redacted, and only key sources are named."""
+    kind = event["type"]
+    if kind == "mcp_status":
+        servers = ", ".join(f"{x['name']}={x['status']}" for x in event["servers"]) or "none reported"
+        log.info("MCP servers: %s; %d tool(s): %s", servers, len(event["tools"]), ", ".join(event["tools"]) or "none")
+        for x in event["servers"]:
+            if x["status"] in ("failed", "needs-auth"):
+                log.warning("MCP server %s is %s%s", x["name"], x["status"], f": {x['error']}" if x.get("error") else "")
+    elif kind == "tool_call":
+        log.info("tool call: %s", event["name"])
+    elif kind == "tool_result":
+        if event["is_error"]:
+            log.warning("tool error: %s", _redact(event["content"], secrets)[:300])
+        else:
+            log.info("tool result: ok (%d chars)", len(event["content"]))
+    elif kind == "error":
+        log.error("run error: %s", event["message"])
+    elif kind == "done":
+        log.info("run done: %s turn(s), %s ms", event["turns"], event["duration_ms"])
+
+
 async def run_agent(
     settings: Settings,
     messages: list[dict[str, str]],
@@ -193,6 +230,10 @@ async def run_agent(
     env, headers, secrets = _credentials(settings, model_key, mcp_key, agent_key)
     options = _build_options(settings, env, headers, max_turns=settings.max_turns)
     prefix = f"mcp__{settings.mcp.server_name}__"
+    key_from = mcp_key_source(settings.mcp, mcp_key, agent_key)
+    log.info("run start: route=%s model=%s mcp=%s (%s) mcp_key_from=%s",
+             settings.model.route, settings.model.name, urlsplit(settings.mcp.url).netloc,
+             settings.mcp.transport, key_from)
     finished = False
 
     try:
@@ -204,11 +245,19 @@ async def run_agent(
                     finished = True
                 if "message" in event:
                     event["message"] = _redact(event["message"], secrets)
+                if event["type"] == "mcp_status":
+                    event["mcp_key_from"] = key_from
+                    for server in event["servers"]:
+                        if "error" in server:
+                            server["error"] = _redact(server["error"], secrets)
+                _log_event(event, secrets)
                 yield event
     except Exception as exc:  # noqa: BLE001 - surface anything to the UI
         if not finished:
             finished = True
-            yield {"type": "error", "message": _redact(_describe(exc), secrets)}
+            event = {"type": "error", "message": _redact(_describe(exc), secrets)}
+            _log_event(event, secrets)
+            yield event
 
     if not finished:
         yield {"type": "done", "turns": 0, "duration_ms": 0}

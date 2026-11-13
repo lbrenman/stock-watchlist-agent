@@ -237,6 +237,36 @@
   .sheet-head h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
   .sheet-sub { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
 
+  /* ---------- events screen ---------- */
+  .count { font-family: var(--mono); font-size: 11.5px; font-weight: 600; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line-strong); text-align: center; }
+  .evpanel { position: fixed; z-index: 42; top: 0; right: 0; bottom: 0; width: min(780px, 100vw); display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -24px 0 60px -20px rgba(0, 0, 0, .45); padding: 18px 18px 0; padding-top: max(18px, env(safe-area-inset-top)); padding-right: max(18px, env(safe-area-inset-right)); }
+  .evnote { margin: 6px 0 0; color: var(--muted); font-size: 12.5px; }
+  .evbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+  .evbar .tog { display: inline-flex; align-items: center; gap: 8px; margin: 0 auto 0 0; font-weight: 500; font-size: 14px; min-height: 32px; }
+  .evbar .tog input { width: 18px; height: 18px; accent-color: var(--primary); margin: 0; }
+  .evlist { flex: 1; min-height: 0; overflow: auto; padding-bottom: max(18px, env(safe-area-inset-bottom)); overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .ev { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; background: var(--panel); }
+  .ev.fail { border-color: color-mix(in srgb, var(--loss) 50%, transparent); }
+  .ev summary { list-style: none; cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; min-height: 40px; }
+  .ev summary::-webkit-details-marker { display: none; }
+  .ev summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin-left: auto; flex: none; transition: transform .15s; }
+  .ev[open] summary::after { transform: rotate(-135deg); }
+  .evtime, .evdur { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .evkind { font-weight: 600; font-size: 13.5px; }
+  .evurl { font-family: var(--mono); font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 140px; }
+  .chip.ok { color: var(--gain); border-color: color-mix(in srgb, var(--gain) 50%, transparent); }
+  .chip.bad { color: var(--loss); border-color: color-mix(in srgb, var(--loss) 50%, transparent); }
+  .evbody { padding: 0 12px 12px; }
+  .evbody h4 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .evline { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+  .evline.bad { color: var(--loss); white-space: pre-wrap; }
+  .kv { display: grid; grid-template-columns: minmax(80px, max-content) 1fr; gap: 3px 14px; font: 12px/1.5 var(--mono); margin: 4px 0; }
+  .kv .k { color: var(--muted); word-break: break-all; }
+  .kv .v { word-break: break-all; }
+  .evbody pre { margin: 4px 0 0; padding: 9px 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 var(--mono); overflow: auto; max-height: 320px; white-space: pre-wrap; word-break: break-word; }
+  .step.mcp::before { border-color: var(--muted); }
+  .step.mcp .sname { color: var(--ink-2); }
+
   /* ---------- phones ---------- */
   @media (max-width: 860px) {
     .connect { grid-template-columns: 1fr; }
@@ -264,6 +294,8 @@
     .steps { margin-left: 8px; padding-left: 16px; }
     .step::before { left: -24px; }
     .empty { margin-top: 1vh; }
+    .evpanel { width: 100%; border-left: 0; }
+    .ev summary { min-height: 44px; }
     .sheet { top: auto; bottom: 0; left: 0; transform: none; width: 100%; max-height: 90%; border-radius: 18px 18px 0 0; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -305,6 +337,7 @@
       <h1>Connect to an agent</h1>
       <p>A client is an agent's address plus the keys to use with it. Each MCP API key has its own watchlist.</p>
       <div class="clients" id="home-clients"></div>
+      <div class="cbar"><button class="btn quiet" id="home-events" type="button">Events <b class="count" id="home-events-count">0</b></button></div>
     </div>
   </div>
 </section>
@@ -320,6 +353,10 @@
       <span class="t2">Amplify AI Gateway</span>
     </div>
     <div class="spacer"></div>
+    <button class="btn quiet label-hide tapsize" id="events-open" type="button" aria-label="Show the events: every request this page makes to an agent">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>Events</span><b class="count" id="events-count">0</b>
+    </button>
     <button class="pill" id="account-pill" type="button" title="Switch client">Client <b id="account"></b></button>
     <button class="btn quiet label-hide tapsize" id="settings-open" type="button" aria-label="Switch client or edit clients">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -381,12 +418,30 @@
   <div class="clients" id="settings-clients"></div>
 </div>
 
+<div class="modal-scrim" id="events-scrim" hidden></div>
+<aside class="evpanel" id="events" role="dialog" aria-modal="true" aria-labelledby="events-title" hidden>
+  <div class="sheet-head">
+    <h2 id="events-title">Events</h2>
+    <button class="icon-btn" id="events-close" type="button" aria-label="Close the events">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <p class="sheet-sub">Every request this page makes to an agent, newest first. Keys are masked unless you choose Show keys; Copy always masks them.</p>
+  <p class="evnote">The page cannot see headers the browser adds itself (Origin, User-Agent, Content-Length), and it sees a response's headers only if the server exposes them (CORS). A request that never completes shows no status; the browser's Network tab says why.</p>
+  <div class="evbar">
+    <label class="tog" for="ev-reveal"><input type="checkbox" id="ev-reveal"> Show keys</label>
+    <button class="btn quiet" id="ev-copy-all" type="button">Copy all</button>
+    <button class="btn quiet" id="ev-clear" type="button">Clear</button>
+  </div>
+  <div class="evlist" id="evlist"></div>
+</aside>
+
 <script>
 const $ = (s) => document.querySelector(s);
 const CLIENTS_KEY = "swa.clients";   // saved clients, keys included (plain text, on this device only)
 const ACTIVE_KEY = "swa.active";     // id of the client last connected
 const SIDE_KEY = "swa.side";         // "open" | "closed", the agent panel
-const state = { clients: [], activeId: null, history: [], busy: false, connected: false, sideOpen: false };
+const state = { clients: [], activeId: null, history: [], busy: false, connected: false, sideOpen: false, revealKeys: false };
 const isMobile = window.matchMedia("(max-width: 860px)");
 const isTouch = window.matchMedia("(pointer: coarse)");
 let homeView, sheetView;
@@ -537,6 +592,77 @@ function defaultAgentUrl() {
 /* ---------------- talking to the agent (A2A over HTTP, straight from the browser) ---------------- */
 class A2AError extends Error {}
 const secretsOf = (c) => [c.agentKey, c.mcpKey];
+const KIND = { card: "Agent card", check: "Key check", chat: "Chat turn" };
+
+/* ---------------- events: every request this page makes to an agent, kept in memory ---------------- */
+const MAX_EVENTS = 200;
+const events = [];   // newest first
+let evTimer = null;
+const SENSITIVE_HEADER = /^(x-api-key|x-mcp-key|x-model-key|authorization|proxy-authorization|cookie|set-cookie)$/i;
+const maskValue = (v) => `\u2022\u2022\u2022\u2022 (${String(v).length} chars)`;
+
+function startEvent(client, kind, url, init) {
+  let rpc = "";
+  try { rpc = JSON.parse(init.body).method || ""; } catch {}
+  const ev = {
+    id: uuid(), t: new Date(), t0: performance.now(), clientName: client.name, kind, method: init.method || "GET", url, rpc,
+    reqHeaders: Object.entries(init.headers || {}), reqBody: init.body || "", secrets: secretsOf(client),
+    status: null, statusText: "", resType: "", resHeaders: [], resBody: "", error: "", done: false, durationMs: 0, open: undefined,
+  };
+  events.unshift(ev);
+  if (events.length > MAX_EVENTS) events.length = MAX_EVENTS;
+  touchEvents();
+  return ev;
+}
+
+function noteResponse(ev, resp) {
+  ev.status = resp.status;
+  ev.statusText = resp.statusText || "";
+  ev.resType = resp.type || "";
+  const list = [];
+  if (resp.headers && resp.headers.forEach) resp.headers.forEach((v, k) => list.push([k, v]));
+  ev.resHeaders = list;
+  touchEvents();
+}
+
+function endEvent(ev, error) {
+  if (error) ev.error = error;
+  ev.done = true;
+  ev.durationMs = Math.round(performance.now() - ev.t0);
+  touchEvents();
+}
+
+// `soon` batches the many updates a stream makes into one redraw.
+function touchEvents(soon = false) {
+  const n = String(events.length);
+  $("#events-count").textContent = n;
+  $("#home-events-count").textContent = n;
+  if ($("#events").hidden) return;
+  if (!soon) { clearTimeout(evTimer); evTimer = null; renderEvents(); }
+  else if (!evTimer) evTimer = setTimeout(() => { evTimer = null; renderEvents(); }, 150);
+}
+
+async function a2aFetch(client, kind, url, init) {
+  const ev = startEvent(client, kind, url, init);
+  if (blockedAsMixedContent(url)) {
+    const msg = "This page is served over https, so the browser will not call an http address. Use the agent's https URL.";
+    endEvent(ev, msg);
+    throw new A2AError(msg);
+  }
+  let resp;
+  try { resp = await fetch(url, init); }
+  catch (err) {
+    endEvent(ev, `${err.name}: ${err.message}. No response was received: the request did not complete (network error, CORS refusal, a blocked or closed port).`);
+    throw new A2AError(`Could not reach ${hostOf(url)} (${err.message}). Check the URL and that the agent is running. ` +
+      "If it is, the agent or a gateway in front of it may not accept calls from a web page (CORS), or the port is not public.");
+  }
+  noteResponse(ev, resp);
+  if (kind !== KIND.chat) {   // small bodies: read a copy, so the caller can still read the original
+    try { ev.resBody = await resp.clone().text(); } catch {}
+    endEvent(ev);
+  }
+  return { resp, ev };
+}
 
 function cardUrl(client) {
   const base = client.url.endsWith("/") ? client.url : client.url + "/";
@@ -558,23 +684,12 @@ function blockedAsMixedContent(url) {
   } catch { return false; }
 }
 
-async function a2aFetch(url, init) {
-  if (blockedAsMixedContent(url)) {
-    throw new A2AError("This page is served over https, so the browser will not call an http address. Use the agent's https URL.");
-  }
-  try { return await fetch(url, init); }
-  catch (err) {
-    throw new A2AError(`Could not reach ${hostOf(url)} (${err.message}). Check the URL and that the agent is running. ` +
-      "If it is, the agent or a gateway in front of it may not accept calls from a web page (CORS), or the port is not public.");
-  }
-}
-
 const rejection = (status) => status === 401
   ? "The agent rejected the Agent API key (HTTP 401)."
   : "The agent refused the request (HTTP 403). Check the Agent API key and any gateway rules.";
 
 async function fetchCard(client) {
-  const resp = await a2aFetch(cardUrl(client), { headers: a2aHeaders(client) });
+  const { resp } = await a2aFetch(client, KIND.card, cardUrl(client), { headers: a2aHeaders(client) });
   if (resp.status === 401 || resp.status === 403) throw new A2AError(rejection(resp.status));
   if (resp.status !== 200) throw new A2AError(`Agent card request failed with HTTP ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
   try { return await resp.json(); } catch { throw new A2AError("The agent card is not valid JSON."); }
@@ -583,7 +698,7 @@ async function fetchCard(client) {
 // Checks the agent accepts the key without calling the model: ask for a task that does not exist.
 // An agent that accepts the key answers with a JSON-RPC error (task not found); one that rejects it answers 401.
 async function checkAgentKey(client) {
-  const resp = await a2aFetch(client.url, {
+  const { resp } = await a2aFetch(client, KIND.check, client.url, {
     method: "POST",
     headers: a2aHeaders(client, { json: true }),
     body: JSON.stringify({ jsonrpc: "2.0", id: hex(), method: "tasks/get", params: { id: "connect-check" } }),
@@ -632,10 +747,11 @@ function mapResult(result, st) {
     const s = status.state;
     const parts = partsOf(status.message);
     const events = parts
-      .filter((p) => p.kind === "data" && p.data && typeof p.data === "object" && (p.data.event === "tool_call" || p.data.event === "tool_result"))
+      .filter((p) => p.kind === "data" && p.data && typeof p.data === "object" && ["tool_call", "tool_result", "mcp_status"].includes(p.data.event))
       .map((p) => p.data);
     for (const d of events) {
       if (d.event === "tool_call") out.push({ type: "tool_call", id: d.id || "", name: d.name || "", input: d.input || {} });
+      else if (d.event === "mcp_status") out.push({ type: "mcp_status", servers: d.servers || [], tools: d.tools || [], key_from: d.mcp_key_from || "" });
       else out.push({ type: "tool_result", id: d.id || "", content: d.content || "", is_error: !!d.is_error });
     }
     const text = textOf(parts);
@@ -679,15 +795,20 @@ async function* streamChat(client, messages) {
     params: { message: { kind: "message", role: "user", messageId: hex(), parts } },
   };
   const st = { t0: performance.now() };
+  let ev = null;
   try {
-    const resp = await a2aFetch(client.url, {
+    const sent = await a2aFetch(client, KIND.chat, client.url, {
       method: "POST",
       headers: a2aHeaders(client, { json: true, sse: true, mcp: true }),
       body: JSON.stringify(payload),
     });
+    const resp = sent.resp;
+    ev = sent.ev;
     if (resp.status !== 200) {
-      const body = (await resp.text()).slice(0, 400);
-      yield { type: "error", message: redact(`Agent returned HTTP ${resp.status}: ${body}`, secrets) };
+      const full = await resp.text();
+      ev.resBody = full;
+      endEvent(ev);
+      yield { type: "error", message: redact(`Agent returned HTTP ${resp.status}: ${full.slice(0, 400)}`, secrets) };
       return;
     }
     const reader = resp.body.getReader();
@@ -695,7 +816,10 @@ async function* streamChat(client, messages) {
     let buf = "";
     for (;;) {
       const { value, done } = await reader.read();
-      buf += done ? dec.decode() : dec.decode(value, { stream: true });
+      const chunk = done ? dec.decode() : dec.decode(value, { stream: true });
+      buf += chunk;
+      ev.resBody += chunk;
+      touchEvents(true);
       let nl;
       while ((nl = buf.indexOf("\n")) >= 0 || (done && buf)) {
         let line;
@@ -717,14 +841,129 @@ async function* streamChat(client, messages) {
     }
   } catch (err) {
     const text = err instanceof A2AError ? err.message : `${err.name}: ${err.message}`;
+    if (ev && !ev.done) endEvent(ev, text);
     yield { type: "error", message: redact(text, secrets) };
     return;
+  } finally {
+    if (ev && !ev.done) endEvent(ev);
   }
   if (!st.finished) {
     const out = [];
     finish(out, st);
     for (const ev of out) yield ev;
   }
+}
+
+
+/* ---------------- the events screen ---------------- */
+const clock = (d) => d.toLocaleTimeString([], { hour12: false });
+const fmtMs = (ms) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
+const shortUrl = (u) => { try { const x = new URL(u); return x.host + x.pathname; } catch { return u; } };
+const shownHeaders = (list, reveal) => list.map(([k, v]) => [k, reveal || !SENSITIVE_HEADER.test(k) ? v : maskValue(v)]);
+const maskText = (text, ev, reveal) => (reveal ? text : redact(text, ev.secrets));
+const pretty = (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
+const failedEvent = (ev) => !!ev.error || (ev.status != null && ev.status >= 400);
+
+// The same text the screen shows, as plain text for pasting. Always built with keys masked by the caller.
+function eventToText(ev, reveal) {
+  const m = (t) => maskText(t, ev, reveal);
+  const hdr = (list) => shownHeaders(list, reveal).map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (none)";
+  const indent = (t) => t.split("\n").map((l) => "    " + l).join("\n");
+  const lines = [
+    `[${clock(ev.t)}] ${ev.kind}${ev.rpc ? " (" + ev.rpc + ")" : ""}  client: ${ev.clientName}`,
+    "", "REQUEST", `${ev.method} ${m(ev.url)}`, hdr(ev.reqHeaders), "  body:", indent(m(ev.reqBody) || "(none)"),
+    "", "RESPONSE",
+  ];
+  if (ev.status != null) lines.push(`${ev.status} ${ev.statusText}  type=${ev.resType || "unknown"}  ${ev.done ? fmtMs(ev.durationMs) : "still running"}`, hdr(ev.resHeaders), "  body:", indent(m(ev.resBody) || "(empty)"));
+  else if (!ev.error) lines.push("  (waiting for a response)");
+  if (ev.error) lines.push(`  problem: ${m(ev.error)}`);
+  return lines.join("\n");
+}
+
+function kvTable(rows) {
+  return h("div", { class: "kv" }, rows.flatMap(([k, v]) => [h("span", { class: "k" }, k), h("span", { class: "v" }, v)]));
+}
+
+function eventRow(ev) {
+  const reveal = state.revealKeys;
+  const failed = failedEvent(ev);
+  const label = ev.error && ev.status == null ? "no response" : ev.status == null ? "waiting" : `${ev.status}`;
+  const tone = failed ? " bad" : ev.status != null && ev.status < 400 ? " ok" : "";
+  const request = [
+    h("h4", {}, "Request"),
+    h("div", { class: "evline" }, `${ev.method} ${maskText(ev.url, ev, reveal)}`),
+    h("h4", {}, "Request headers"),
+    ev.reqHeaders.length ? kvTable(shownHeaders(ev.reqHeaders, reveal)) : h("div", { class: "hint" }, "none set by the page"),
+    ev.reqBody ? h("h4", {}, "Request body") : null,
+    ev.reqBody ? h("pre", {}, maskText(pretty(ev.reqBody), ev, reveal)) : null,
+  ];
+  const response = [h("h4", {}, "Response")];
+  if (ev.status != null) {
+    response.push(h("div", { class: "evline" }, `${ev.status} ${ev.statusText}`.trim() + (ev.resType ? `  (${ev.resType})` : "") + (ev.done ? `  ${fmtMs(ev.durationMs)}` : "  still running")));
+    response.push(h("h4", {}, "Response headers"));
+    response.push(ev.resHeaders.length ? kvTable(shownHeaders(ev.resHeaders, reveal))
+      : h("div", { class: "hint" }, "none visible to the page (the server has to expose them to a web page, CORS)"));
+    response.push(h("h4", {}, "Response body"));
+    response.push(h("pre", {}, maskText(ev.kind === KIND.chat ? ev.resBody : pretty(ev.resBody), ev, reveal) || "(empty)"));
+  } else if (!ev.error) {
+    response.push(h("div", { class: "hint" }, "Waiting for a response"));
+  }
+  if (ev.error) response.push(h("div", { class: "evline bad" }, maskText(ev.error, ev, reveal)));
+
+  const det = h("details", { class: "ev" + (failed ? " fail" : "") },
+    h("summary", {},
+      h("span", { class: "evtime" }, clock(ev.t)),
+      h("span", { class: "evkind" }, ev.kind),
+      h("span", { class: "chip" + tone }, label),
+      h("span", { class: "evurl" }, `${ev.method} ${shortUrl(ev.url)}${ev.rpc ? "  " + ev.rpc : ""}`),
+      h("span", { class: "evdur" }, ev.done ? fmtMs(ev.durationMs) : "running")),
+    h("div", { class: "evbody" },
+      h("div", { class: "hint" }, `Client: ${ev.clientName}`),
+      ...request, ...response,
+      h("div", { class: "cbar" },
+        h("button", { class: "btn quiet tiny", type: "button", onclick: (e) => copyText(eventToText(ev, false), e.currentTarget) }, "Copy this event"))));
+  det.open = ev.open !== undefined ? ev.open : failed;   // what you opened or closed wins; failures open themselves
+  det.addEventListener("toggle", () => { ev.open = det.open; });
+  return det;
+}
+
+function renderEvents() {
+  const list = $("#evlist");
+  list.replaceChildren(...(events.length ? events.map(eventRow)
+    : [h("p", { class: "hint" }, "No requests yet. They appear here as the page talks to an agent.")]));
+}
+function openEvents() {
+  renderEvents();
+  $("#events-scrim").hidden = false;
+  $("#events").hidden = false;
+}
+function closeEvents() {
+  $("#events-scrim").hidden = true;
+  $("#events").hidden = true;
+}
+
+// The first thing the agent says in a run: did the MCP server connect, and which tools loaded.
+function addMcpStatus(ev, ctx) {
+  const servers = ev.servers || [];
+  const tools = ev.tools || [];
+  const bad = servers.filter((s) => s.status === "failed" || s.status === "needs-auth");
+  const summary = servers.length ? servers.map((s) => `${s.name} ${s.status}`).join(", ") : "no MCP servers reported";
+  const step = h("details", { class: "step mcp" + (bad.length ? " error" : "") },
+    h("summary", {},
+      h("span", { class: "sname" }, "MCP connection"),
+      h("span", { class: "chip" }, `${tools.length} tool${tools.length === 1 ? "" : "s"}`),
+      h("span", { class: "args" }, summary)),
+    h("div", { class: "sbody" },
+      h("div", { class: "cap" }, "Servers"),
+      h("pre", {}, servers.map((s) => `${s.name}: ${s.status}${s.error ? " - " + s.error : ""}`).join("\n") || "(none reported)"),
+      h("div", { class: "cap" }, "Tools loaded"),
+      h("pre", {}, tools.join("\n") || "(none)"),
+      ev.key_from ? h("div", { class: "cap" }, "MCP key came from") : null,
+      ev.key_from ? h("pre", {}, ev.key_from) : null));
+  if (bad.length) step.open = true;   // a server that did not connect is worth showing
+  if (!ctx.steps) { ctx.steps = h("div", { class: "steps" }); addRow(ctx.steps); }
+  ctx.steps.append(step);
+  $("#log").scrollTop = $("#log").scrollHeight;
 }
 
 
@@ -1024,7 +1263,6 @@ function addRow(el) {
   return row;
 }
 
-const pretty = (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
 const brief = (input) => Object.entries(input || {}).slice(0, 2)
   .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("  ");
 
@@ -1111,6 +1349,8 @@ function handle(ev, ctx) {
     if (ev.is_error) c.step.open = true;   // a failure is worth showing; successes stay collapsed
     c.state.replaceChildren(document.createTextNode(ev.is_error ? `error, ${ms} ms` : `${ms} ms`));
     setThinking(ctx, true);
+  } else if (ev.type === "mcp_status") {
+    addMcpStatus(ev, ctx);
   } else if (ev.type === "error") {
     setThinking(ctx, false);
     addRow(h("div", { class: "err" }, ev.message));
@@ -1180,7 +1420,19 @@ function wire() {
   $("#account-pill").addEventListener("click", openSettings);
   $("#settings-close").addEventListener("click", closeSettings);
   $("#settings-scrim").addEventListener("click", closeSettings);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#settings").hidden) closeSettings(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#events").hidden) closeEvents();
+    else if (!$("#settings").hidden) closeSettings();
+  });
+  $("#events-open").addEventListener("click", openEvents);
+  $("#home-events").addEventListener("click", openEvents);
+  $("#events-close").addEventListener("click", closeEvents);
+  $("#events-scrim").addEventListener("click", closeEvents);
+  $("#ev-reveal").addEventListener("change", () => { state.revealKeys = $("#ev-reveal").checked; renderEvents(); });
+  $("#ev-copy-all").addEventListener("click", () =>
+    copyText(events.map((ev) => eventToText(ev, false)).join("\n\n----\n\n") || "No events.", $("#ev-copy-all")));
+  $("#ev-clear").addEventListener("click", () => { events.length = 0; touchEvents(); });
   $("#side-toggle").addEventListener("click", toggleSide);
   $("#side-scrim").addEventListener("click", toggleSide);
   $("#card-copy").addEventListener("click", () => copyText($("#card-url").textContent, $("#card-copy")));

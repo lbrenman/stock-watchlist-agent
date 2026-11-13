@@ -27,6 +27,8 @@ text part; plain A2A clients just send text and get single-turn behavior.
 
 Streaming: tool calls and results are sent as status updates whose message holds a
 text part (human readable) and a data part {"event": "tool_call" | "tool_result", ...}.
+Once at the start of a run, a data part {"event": "mcp_status", "servers": [...], "tools": [...], "mcp_key_from": ...}
+says whether the MCP server connected and which tools loaded.
 The final answer is also sent as an artifact.
 """
 from __future__ import annotations
@@ -225,6 +227,17 @@ class WatchlistExecutor(AgentExecutor):
                             "is_error": ev["is_error"],
                         }),
                     ])
+                elif kind == "mcp_status":
+                    summary = ", ".join(f"{x['name']} {x['status']}" for x in ev["servers"]) or "no MCP servers reported"
+                    await say([
+                        _text_part(f"MCP: {summary}; {len(ev['tools'])} tool(s)"),
+                        _data_part({
+                            "event": "mcp_status",
+                            "servers": ev["servers"],
+                            "tools": ev["tools"],
+                            "mcp_key_from": ev.get("mcp_key_from", ""),
+                        }),
+                    ])
                 elif kind == "error":
                     await updater.failed(message=updater.new_agent_message([_text_part(ev["message"])]))
                     return
@@ -333,6 +346,7 @@ def main() -> None:
         allow_origins=["*"],
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=CORS_ALLOWED_HEADERS,
+        expose_headers=["*"],   # so the page's Events screen can show the response headers
         max_age=600,
     )
 

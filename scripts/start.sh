@@ -9,6 +9,11 @@
 # Logs: /tmp/web.log (web app) and /tmp/a2a.log (A2A agent).
 cd "$(dirname "$0")/.." || exit 0
 
+case "${1:-}" in
+  ""|--restart) ;;
+  *) echo "Unknown option: $1"; echo "Usage: bash scripts/start.sh [--restart]"; exit 2 ;;
+esac
+
 UI_PORT="${UI_PORT:-8000}"
 A2A_PORT="${A2A_PORT:-9000}"
 WAIT_SECS="${WAIT_SECS:-25}"
@@ -57,6 +62,8 @@ wait_for() {  # name url logfile
 
 [ -n "${STARTED_UI:-}" ]  && { wait_for "web app:   " "$UI_URL" /tmp/web.log; }
 [ -n "${STARTED_A2A:-}" ] && { wait_for "A2A agent: " "$A2A_URL" /tmp/a2a.log; }
+
+echo "Logs: tail -f /tmp/a2a.log (agent)   tail -f /tmp/web.log (web app)"
 
 # Never fail the Codespace lifecycle hook; the messages above say what went wrong.
 exit 0

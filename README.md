@@ -80,8 +80,9 @@ What that means in practice:
 - If the agent is open (`AGENT_API_KEYS` unset) and the caller sends no `x-api-key`, no `X-Mcp-Key` and `MCP_API_KEY` is empty,
   the run fails with "MCP API key is required."
 
-Each run says which one it used: the agent's log line and the "MCP connection" line in the chat both name the source
-(for example `x-api-key of the call`), never the key itself. Keys are never logged and are redacted from errors.
+Each run's log line names which one it used (`mcp_key_from=X-Mcp-Key header`, `MCP_API_KEY` or `x-api-key of the call`),
+never the key itself. The web app is not told: it cannot see the agent's environment, and the label is not sent in the
+stream. Keys are never logged and are redacted from errors.
 
 ## Quick start (laptop)
 
@@ -219,7 +220,7 @@ curl http://localhost:9000/.well-known/agent-card.json
   `{"history": [{"role": "user"|"assistant", "content": "..."}]}` beside the text part; the web app does this.
 - **Streaming:** `message/stream` sends status updates for each tool call and result (a text part plus a data part
   `{"event": "tool_call"|"tool_result", ...}`), then the final answer as an artifact. Once at the start of a run it also sends
-  `{"event": "mcp_status", "servers": [...], "tools": [...], "mcp_key_from": "..."}`: whether the MCP server connected
+  `{"event": "mcp_status", "servers": [...], "tools": [...]}`: whether the MCP server connected
   (`connected`, `failed`, `needs-auth`, `pending` or `disabled`, as the Agent SDK reports it at the start of a run) and which
   tools loaded. `pending` is not a failure by itself.
 - **Logs:** to the process's output (`/tmp/a2a.log` with `scripts/start.sh`, so `tail -f /tmp/a2a.log` while you chat). At
@@ -283,7 +284,9 @@ Header names are not case sensitive. The agent card and `GET /ping` need no key.
 **clients** and calls the selected client's agent straight from the browser: it fetches the card, checks the key, sends
 each chat turn as `message/stream`, reads the streamed tool calls and answer, and renders answers as markdown (tables with
 aligned numbers and green and red changes). `scripts/start.sh` serves the folder with `python -m http.server` on port 8000;
-any static file host would do.
+any static file host would do. The page is not tied to the agent's settings: it names none of them (no environment variable,
+no `.env`) and is told nothing about the agent's environment. All it learns from an agent is its card and the answers to
+its own calls.
 
 - **Clients.** A client is a name, the agent's URL, the Agent API key and an optional MCP API key. **Clients** (top right)
   lists them: click one to switch to it (a different client starts a fresh chat), **Edit**, **Delete**, **Add client**, or
@@ -296,7 +299,7 @@ any static file host would do.
 - **Agent panel:** the button at the top left shows or hides it (open by default on a desktop, closed on a phone, remembered
   per device). It shows the client, the agent, its card URL (Copy and Open) and its skills, and never opens by itself.
 - **MCP connection.** The first line of an answer says whether the MCP server connected and which tools loaded (collapsed;
-  it opens itself when a server failed, with its error and where the MCP key came from).
+  it opens itself when a server failed, with its error).
 - **Tool calls** appear as one collapsed line each (name, a short input summary, status, time). Open one to see the full input
   and result; a failed call opens itself.
 - **Events.** The **Events** button (top bar, and on the home screen, so it works when connecting fails) opens a panel with
@@ -417,8 +420,9 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
 - *The Events screen, in the same fake browser:* the request and response of the card fetch, key check and a chat turn
   (URL, headers, body, status, duration), masking and Show keys, a key echoed in an error body, Copy this event and Copy all
   always masked, Clear, the 200-event cap, a failed request that never got a response, a 401, a stream cut off half way,
-  opening from the home screen, a row staying open across redraws; and the MCP connection line (connected, and failed
-  opening itself).
+  opening from the home screen, a row staying open across redraws; the MCP connection line (connected, and failed
+  opening itself); and that nothing in the page, its form hints or its warnings names an agent setting or says where an MCP
+  key came from (the check fails on the previous version).
 - *The agent, with stand-ins for the SDKs:* the init message becoming the `mcp_status` event (prefix stripped, only MCP
   tools, `pending` and `failed`), that event reaching the stream, the log lines for a run, and that no key appears in the
   log or the status (including a key echoed in an MCP error); the MCP key order (`X-Mcp-Key`, then `MCP_API_KEY`, then the caller's `x-api-key`,

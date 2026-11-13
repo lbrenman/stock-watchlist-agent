@@ -27,7 +27,7 @@ text part; plain A2A clients just send text and get single-turn behavior.
 
 Streaming: tool calls and results are sent as status updates whose message holds a
 text part (human readable) and a data part {"event": "tool_call" | "tool_result", ...}.
-Once at the start of a run, a data part {"event": "mcp_status", "servers": [...], "tools": [...], "mcp_key_from": ...}
+Once at the start of a run, a data part {"event": "mcp_status", "servers": [...], "tools": [...]}
 says whether the MCP server connected and which tools loaded.
 The final answer is also sent as an artifact.
 """
@@ -235,7 +235,6 @@ class WatchlistExecutor(AgentExecutor):
                             "event": "mcp_status",
                             "servers": ev["servers"],
                             "tools": ev["tools"],
-                            "mcp_key_from": ev.get("mcp_key_from", ""),
                         }),
                     ])
                 elif kind == "error":

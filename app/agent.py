@@ -7,9 +7,10 @@ Public API:
         agent_key  the caller's own x-api-key (optional); the last fallback for the MCP key
 
 Event dicts yielded by run_agent:
-    {"type": "mcp_status", "servers": [{"name", "status", "error"?}], "tools": [str], "mcp_key_from": str}
+    {"type": "mcp_status", "servers": [{"name", "status", "error"?}], "tools": [str]}
         sent once at the start of a run, from the SDK's init message (status: connected, failed, needs-auth,
-        pending or disabled; "pending" is not a failure by itself)
+        pending or disabled; "pending" is not a failure by itself). Where the MCP key came from is logged
+        by the agent but not sent to callers.
     {"type": "text", "text": str}
     {"type": "tool_call", "id": str, "name": str, "input": dict}
     {"type": "tool_result", "id": str, "content": str, "is_error": bool}
@@ -246,7 +247,6 @@ async def run_agent(
                 if "message" in event:
                     event["message"] = _redact(event["message"], secrets)
                 if event["type"] == "mcp_status":
-                    event["mcp_key_from"] = key_from
                     for server in event["servers"]:
                         if "error" in server:
                             server["error"] = _redact(server["error"], secrets)

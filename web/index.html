@@ -752,7 +752,7 @@ function mapResult(result, st) {
       .map((p) => p.data);
     for (const d of events) {
       if (d.event === "tool_call") out.push({ type: "tool_call", id: d.id || "", name: d.name || "", input: d.input || {} });
-      else if (d.event === "mcp_status") out.push({ type: "mcp_status", servers: d.servers || [], tools: d.tools || [], key_from: d.mcp_key_from || "" });
+      else if (d.event === "mcp_status") out.push({ type: "mcp_status", servers: d.servers || [], tools: d.tools || [] });
       else out.push({ type: "tool_result", id: d.id || "", content: d.content || "", is_error: !!d.is_error });
     }
     const text = textOf(parts);
@@ -958,9 +958,7 @@ function addMcpStatus(ev, ctx) {
       h("div", { class: "cap" }, "Servers"),
       h("pre", {}, servers.map((s) => `${s.name}: ${s.status}${s.error ? " - " + s.error : ""}`).join("\n") || "(none reported)"),
       h("div", { class: "cap" }, "Tools loaded"),
-      h("pre", {}, tools.join("\n") || "(none)"),
-      ev.key_from ? h("div", { class: "cap" }, "MCP key came from") : null,
-      ev.key_from ? h("pre", {}, ev.key_from) : null));
+      h("pre", {}, tools.join("\n") || "(none)")));
   if (bad.length) step.open = true;   // a server that did not connect is worth showing
   if (!ctx.steps) { ctx.steps = h("div", { class: "steps" }); addRow(ctx.steps); }
   ctx.steps.append(step);
@@ -1002,8 +1000,8 @@ function mountClients(container, idp) {
   };
   addField("name", "Name", "Optional. How this client is listed. Defaults to the address.", { placeholder: "Codespace" });
   addField("url", "Agent URL", "The agent's own address, or the AI Gateway proxy's. This page calls it straight from your browser.", { mode: "url", placeholder: "https://" });
-  addField("agent", "Agent API key", "Sent as x-api-key. Needed when the agent sets AGENT_API_KEYS; leave blank if it does not.", { secret: true });
-  addField("mcp", "MCP API key (optional)", "Decides whose watchlist you see. Leave blank and the agent uses its own MCP_API_KEY, or else the agent key above.", { secret: true });
+  addField("agent", "Agent API key", "Sent as x-api-key. Leave it blank if the agent does not ask for a key.", { secret: true });
+  addField("mcp", "MCP API key (optional)", "Sent as X-Mcp-Key. It decides whose watchlist you see. Leave it blank to use the agent's default.", { secret: true });
 
   const saveBtn = h("button", { class: "btn", id: `${idp}-save`, type: "button" }, "Save and connect");
   const cancelBtn = h("button", { class: "btn quiet", type: "button" }, "Cancel");
@@ -1211,8 +1209,8 @@ function renderAgent(agent, client) {
   const isLocal = (u) => /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(u);
   warn.hidden = !(isLocal(advertised) && !isLocal(client.url));
   if (!warn.hidden) {
-    warn.textContent = `The card advertises ${advertised}, which other A2A clients cannot reach. ` +
-      "Set A2A_PUBLIC_URL on the agent to its public address and restart it.";
+    warn.textContent = `The card advertises ${advertised}, an address other A2A clients cannot reach. ` +
+      "This page is not affected: it calls the URL you gave it.";
   }
 
   const box = $("#tools");

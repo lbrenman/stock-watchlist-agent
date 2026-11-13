@@ -97,14 +97,14 @@
   .field-error:empty { display: none; }
   .clients { margin-top: 18px; }
   .clist { display: grid; gap: 8px; }
-  .crow { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .crow { display: flex; flex-wrap: wrap; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
   .crow.active { border-color: var(--read); }
-  .cmain { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; border: 0; background: transparent; padding: 10px 12px; min-height: 44px; border-radius: 12px; }
+  .cmain { flex: 1 1 150px; min-width: 0; display: grid; gap: 2px; text-align: left; border: 0; background: transparent; padding: 10px 12px; min-height: 44px; border-radius: 12px; }
   .cmain:hover { background: var(--soft); }
   .cname { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
   .cname .ctext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .curl { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cactions { display: flex; align-items: center; gap: 6px; padding-right: 10px; flex: none; }
+  .cactions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-left: auto; padding: 6px 10px 6px 0; }
   .cbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
   .cform { margin-top: 14px; padding: 2px 16px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
   .cform h3 { margin: 16px 0 0; font-size: 16px; letter-spacing: -0.01em; }
@@ -118,9 +118,6 @@
   .title-wrap .t1 { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .title-wrap .t2 { font-size: 12px; color: var(--muted); white-space: nowrap; }
   .top .spacer { flex: 1; }
-  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); font-size: 13px; color: var(--ink-2); white-space: nowrap; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
-  .pill b { font-family: var(--mono); font-weight: 500; color: var(--ink); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
-  button.pill:hover { background: var(--panel); border-color: var(--line-strong); }
   .body { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: 0; }
 
   /* ---------- side panel ---------- */
@@ -132,7 +129,7 @@
   .agent-sub { color: var(--muted); font-size: 12.5px; }
   .agent-desc { color: var(--ink-2); font-size: 13.5px; margin: 8px 0 0; }
   .url { font-family: var(--mono); font-size: 12px; color: var(--ink); word-break: break-all; line-height: 1.45; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 5.4em; overflow: auto; }
-  .card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .card-actions { display: flex; gap: 8px; margin-top: 10px; }
   .card-warn { color: var(--write); font-size: 12.5px; margin-top: 10px; }
   .tool { padding: 9px 11px 9px 13px; border: 1px solid var(--line); border-left: 3px solid var(--ink); border-radius: 10px; margin-bottom: 8px; background: var(--panel); }
   .tool .n { font-family: var(--mono); font-size: 12.5px; font-weight: 500; word-break: break-all; }
@@ -239,6 +236,7 @@
   .sheet-head h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
   .sheet-sub { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
 
+  .who { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* ---------- events screen ---------- */
   .count { font-family: var(--mono); font-size: 11.5px; font-weight: 600; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line-strong); text-align: center; }
   .evpanel { position: fixed; z-index: 42; top: 0; right: 0; bottom: 0; width: min(780px, 100vw); display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -24px 0 60px -20px rgba(0, 0, 0, .45); padding: 18px 18px 0; padding-top: max(18px, env(safe-area-inset-top)); padding-right: max(18px, env(safe-area-inset-right)); }
@@ -284,7 +282,6 @@
     .app.side-open .side { transform: none; }
     .scrim { position: fixed; inset: 0; z-index: 25; background: rgba(8, 14, 24, .45); }
     .app.side-open .scrim { display: block; }
-    .pill { display: none; }
     .btn.label-hide span { display: none; }
     .icon-btn, .btn.quiet.tapsize { min-width: 44px; min-height: 44px; }
     input[type=password], input[type=text], textarea { font-size: 16px; }   /* 16px stops iOS Safari zooming on focus */
@@ -360,10 +357,9 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <span>Events</span><b class="count" id="events-count">0</b>
     </button>
-    <button class="pill" id="account-pill" type="button" title="Switch client">Client <b id="account"></b></button>
-    <button class="btn quiet label-hide tapsize" id="settings-open" type="button" aria-label="Switch client or edit clients">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span>Clients</span>
+    <button class="btn quiet label-hide tapsize" id="settings-open" type="button" aria-label="Switch client or edit clients" title="Clients">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 19c.6-3.2 2.9-5 5.5-5s4.9 1.8 5.5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="17" cy="9" r="2.4" stroke="currentColor" stroke-width="1.8"/><path d="M16 14.2c2.4.2 4 1.8 4.5 4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="who" id="account"></span>
     </button>
   </header>
   <div class="body">
@@ -380,7 +376,6 @@
           <div class="card-actions">
             <button class="btn quiet tiny" id="card-copy" type="button">Copy</button>
             <a class="btn quiet tiny" id="card-open" target="_blank" rel="noopener">Open</a>
-            <button class="btn quiet tiny" id="disconnect" type="button">Disconnect</button>
           </div>
           <div class="card-warn" id="card-warn" hidden></div>
         </div>
@@ -1032,7 +1027,8 @@ function mountClients(container, idp) {
           h("span", { class: "curl" }, c.url)),
         h("div", { class: "cactions" },
           h("button", { class: "btn quiet tiny", type: "button", onclick: () => view.openForm(c) }, "Edit"),
-          h("button", { class: "btn quiet tiny", type: "button", onclick: () => deleteClient(c) }, "Delete")));
+          h("button", { class: "btn quiet tiny", type: "button", onclick: () => deleteClient(c) }, "Delete"),
+          live ? h("button", { class: "btn quiet tiny", type: "button", onclick: () => disconnect() }, "Disconnect") : null));
     }));
     const open = view.editing !== undefined;
     form.hidden = !open;
@@ -1463,7 +1459,6 @@ async function boot() {
 
 function wire() {
   $("#settings-open").addEventListener("click", openSettings);
-  $("#account-pill").addEventListener("click", openSettings);
   $("#settings-close").addEventListener("click", closeSettings);
   $("#settings-scrim").addEventListener("click", closeSettings);
   document.addEventListener("keydown", (e) => {
@@ -1481,7 +1476,6 @@ function wire() {
   $("#ev-clear").addEventListener("click", () => { events.length = 0; touchEvents(); });
   $("#side-toggle").addEventListener("click", toggleSide);
   $("#side-scrim").addEventListener("click", toggleSide);
-  $("#disconnect").addEventListener("click", disconnect);
   $("#card-copy").addEventListener("click", () => copyText($("#card-url").textContent, $("#card-copy")));
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
   $("#input").addEventListener("input", autosize);

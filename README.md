@@ -290,16 +290,17 @@ file there whenever it changes, and reload without the cache. To see which versi
 no `.env`) and is told nothing about the agent's environment. All it learns from an agent is its card and the answers to
 its own calls.
 
-- **Clients.** A client is a name, the agent's URL, the Agent API key and an optional MCP API key. **Clients** (top right)
-  lists them: click one to switch to it (a different client starts a fresh chat), **Edit**, **Delete**, **Add client**, or
-  **Delete all clients**. Save and connect checks the card and the agent key before it saves anything, so a client that
+- **Clients.** A client is a name, the agent's URL, the Agent API key and an optional MCP API key. The **Clients** button
+  (top right, a people icon; on a desktop it also shows the name of the connected client, on a phone just the icon) opens the
+  list: click a client to switch to it (a different client starts a fresh chat), **Edit**, **Delete**, **Add client**, or
+  **Delete all clients**. The connected client's row also has **Disconnect**. All client actions are in this one place. Save and connect checks the card and the agent key before it saves anything, so a client that
   does not connect is not stored, and what you typed stays in the form.
 - **Where they are kept.** In this browser's local storage, in plain text, keys included. Use it on private devices only.
   Nothing is sent anywhere except to the agent URL of the client you are using.
 - **Connects on load** to the client used last, and shows the home screen when that fails, when there is no client yet, or
   when no client is marked as used last (after **Disconnect**, or after you delete the one used last). The first time, the
   URL is filled in for you: the agent on this machine, or this Codespace's port 9000.
-- **Disconnect** (in the agent panel, next to Copy and Open) goes back to the home screen with your saved clients listed. It
+- **Disconnect** (in the Clients sheet, on the connected client's row, next to Edit and Delete) goes back to the home screen with your saved clients listed. It
   clears the chat, cancels a reply that is still streaming, and keeps your clients and the Events list. No client is marked as
   used last, so a reload stays on the home screen until you pick one. On a phone it also closes the agent drawer. Switching to
   another client while a reply is streaming cancels that reply the same way.
@@ -424,7 +425,9 @@ key each fail; switching the MCP API key returned each account's own watchlist (
 proxy of the agent worked with the old page, passed `X-Mcp-Key` through, and rejected calls that carry no credentials.
 
 Tested in a sandbox without the real SDKs or a browser, on the current code:
-- *Disconnect, in the same fake browser:* the button in the agent panel; it shows the home screen with the clients listed and
+- *Disconnect and the top bar, in the same fake browser:* Disconnect is only on the connected client's row in the Clients
+  sheet (not on the other rows, not in the agent panel, not on the home screen) and closes the sheet; the top bar has one
+  Clients button with a people icon and the client's name (no pill, no sun-like icon); it shows the home screen with the clients listed and
   none connected, clears the chat, keeps the clients and the events, and marks no client as used last; a reload then stays on
   the home screen and makes no request (also after deleting the client used last); picking a client connects with a clean
   chat; a reply that is still streaming is cancelled (by Disconnect, and by switching clients), the page is not left busy, the
@@ -466,13 +469,13 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
 - **Codespaces:** that a page opened from the Private port 8000 can call the Public port 9000.
 - **AI Gateway proxy:** that it answers the CORS preflight; whether it streams tool calls live rather than buffering; and
   `X-Model-Key` through it.
-- **The UI on a desktop browser:** colors, spacing, the new client list and form, the Events panel (long bodies, many rows), the agent panel open and closed (closed, the chat must use the full width; it once collapsed to nothing there), tables, light and dark mode.
+- **The UI on a desktop browser:** colors, spacing, the new client list and form, the Events panel (long bodies, many rows), the agent panel open and closed (closed, the chat must use the full width; it once collapsed to nothing there), the top bar's Clients button with its people icon and the connected client's name (long names cut with an ellipsis), tables, light and dark mode.
 - **The UI on an iPhone (Safari):** (the first-launch home screen, with the dark brand block whole above the form, has been seen working on an iPhone in Chrome; a tall form once squeezed that block to nothing, and the grid now keeps its row at full height); the page fits without scrolling sideways; the clients sheet slides up from the bottom, its
   list and form are usable, and focusing a field does not zoom; after the first message the send button, the message box's
   right edge and the tool steps stay inside the screen (the prompt chips once widened the chat past a phone; the CSS now
   lets that column shrink, checked by reading the CSS, not by rendering it) and the message box hint fits on one line; the
   Events panel fills the screen and its rows and buttons are easy to tap; the top bar and message box clear the notch and the home
-  indicator; the agent panel slides in, Copy, Open and Disconnect fit on one row (or wrap) in it, and a tap outside closes it; prompt chips and tables scroll sideways.
+  indicator; the agent panel slides in and a tap outside closes it; the connected client's row in the Clients sheet (name, Edit, Delete, Disconnect) wraps cleanly on a narrow screen; prompt chips and tables scroll sideways.
 - **Proxy model route:** needs `/v1/messages`, streaming, tool use, `x-api-key`, and your `MODEL_NAME`.
   If it rejects `anthropic-beta` headers, keep `MODEL_DISABLE_BETAS=1`.
 - **AgentCore:** that the SDK's bundled CLI starts in an ARM64 AgentCore container, that the runtime can reach your

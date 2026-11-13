@@ -455,9 +455,11 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
 - **AI Gateway proxy:** that it answers the CORS preflight; whether it streams tool calls live rather than buffering; and
   `X-Model-Key` through it.
 - **The UI on a desktop browser:** colors, spacing, the new client list and form, the Events panel (long bodies, many rows), the panel collapsing, tables, light and dark mode.
-- **The UI on an iPhone (Safari):** the page fits without scrolling sideways; the clients sheet slides up from the bottom, its
-  list and form are usable, and focusing a field does not zoom; the Events panel fills the screen and its rows and buttons are
-  easy to tap; the top bar and message box clear the notch and the home
+- **The UI on an iPhone (Safari):** on a first launch the home screen shows the dark brand block (logo, title, "Amplify AI Gateway") whole above the form and scrolls to reach the rest of the form (a tall form once squeezed the brand block to nothing, so the form's heading sat on top of the title; the grid now keeps that row at its full height, checked by reading the CSS, not by rendering it); the page fits without scrolling sideways; the clients sheet slides up from the bottom, its
+  list and form are usable, and focusing a field does not zoom; after the first message the send button, the message box's
+  right edge and the tool steps stay inside the screen (the prompt chips once widened the chat past a phone; the CSS now
+  lets that column shrink, checked by reading the CSS, not by rendering it) and the message box hint fits on one line; the
+  Events panel fills the screen and its rows and buttons are easy to tap; the top bar and message box clear the notch and the home
   indicator; the agent panel slides in and a tap outside closes it; prompt chips and tables scroll sideways.
 - **Proxy model route:** needs `/v1/messages`, streaming, tool use, `x-api-key`, and your `MODEL_NAME`.
   If it rejects `anthropic-beta` headers, keep `MODEL_DISABLE_BETAS=1`.

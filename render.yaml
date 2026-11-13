@@ -1,0 +1,39 @@
+# Render Blueprint: runs the A2A agent, and only the agent, as a Docker web service on the free plan.
+# Create it: Render dashboard > New > Blueprint > connect this repo. Render prompts for the values marked sync: false.
+# Nothing specific to your environment is committed here: hostnames and keys are prompted for or generated.
+services:
+  - type: web
+    name: stock-watchlist-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile.agentcore   # the same image AgentCore uses
+    plan: free
+    healthCheckPath: /ping                   # open, needs no key
+    envVars:
+      # Render sends traffic to PORT (default 10000). The agent reads A2A_PORT, so keep the two equal.
+      - key: A2A_PORT
+        value: "10000"
+      - key: AGENT_REQUIRE_API_KEY
+        value: "1"
+      # The key callers send as x-api-key. Render generates it once; read it in the service's Environment tab.
+      - key: AGENT_API_KEYS
+        generateValue: true
+
+      # The MCP server. MCP_API_KEY is optional: blank means the caller's own x-api-key is used.
+      - key: MCP_URL
+        sync: false
+      - key: MCP_API_KEY
+        sync: false
+
+      # The model route. Fill in the set you use and leave the other blank (blank means unset).
+      # Through a gateway proxy:
+      - key: MODEL_BASE_URL
+        sync: false
+      - key: MODEL_NAME
+        sync: false
+      - key: MODEL_API_KEY
+        sync: false
+      # Or straight to Anthropic (a dev fallback that bypasses the gateway):
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false

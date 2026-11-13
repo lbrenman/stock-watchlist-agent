@@ -11,7 +11,7 @@ Browser (web app, static files)  ------>  A2A agent (:9000)  ------>  model  +  
  and calls the agent directly                                          Anthropic-compatible proxy)
 ```
 
-The agent is always its own process (`python -m app.a2a_server`), whether it runs on a laptop, in a Codespace, or in AWS
+The agent is always its own process (`python -m app.a2a_server`), whether it runs on a laptop, in a Codespace, on Render, or in AWS
 Bedrock AgentCore Runtime. The web app is only files (`web/index.html`): it has no server, no settings and no connection
 to the agent except the address and keys you give it, so the same page can talk to any agent you can reach. Because the
 browser calls the agent directly, the agent answers CORS requests from any origin (access is controlled by the
@@ -401,6 +401,50 @@ python deploy/agentcore_deploy.py --image <image-uri> --role-arn <execution-role
   configuration. Fine for a demo with throwaway keys; move them to Secrets Manager later.
 - The script prints the runtime's A2A address at the end. The web app cannot call an AgentCore runtime directly (see above).
 
+## Run the agent on Render (free tier)
+
+`render.yaml` runs the agent, and only the agent, as a Docker web service on Render's free plan. The web app is not part of
+it: use any copy of the web app, or curl, with the service's URL.
+
+1. Push the repo to GitHub. In the Render dashboard choose **New > Blueprint** and connect the repo; Render reads
+   `render.yaml` from the repo root.
+2. Render asks for the values marked `sync: false` (so none of your hostnames or keys is committed). Fill in the ones for your
+   setup and leave the others blank (blank means unset):
+
+   | Variable | What to enter |
+   |---|---|
+   | `MCP_URL` | The MCP server's URL |
+   | `MCP_API_KEY` | An optional default MCP key. Blank: the caller's own `x-api-key` is used (see "Which MCP key the agent uses") |
+   | `MODEL_BASE_URL`, `MODEL_NAME`, `MODEL_API_KEY` | The model route through a gateway proxy |
+   | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Or the direct route (leave the three above blank) |
+
+   If Render will not accept an empty value, a single space should also work, because the agent treats a whitespace-only value
+   as unset (not tried on Render). To use another MCP transport, add `MCP_TRANSPORT=sse` under the service's **Environment**.
+3. Render builds the image and starts the agent. `AGENT_API_KEYS` is generated for you: open the service, then
+   **Environment**, and copy it. `AGENT_REQUIRE_API_KEY=1` is already set, so the agent refuses to start without a key.
+4. The agent's address is `https://<service-name>.onrender.com/`, shown at the top of the service page. The card advertises it
+   without any setting (the agent reads `RENDER_EXTERNAL_URL`, which Render sets). Check it:
+   ```bash
+   curl -s https://<service-name>.onrender.com/.well-known/agent-card.json | grep -o '"url":"[^"]*"'
+   ```
+5. In the web app add a client with that URL and the generated key (and an MCP key if you use one), or call it with the curl
+   command in "Call the agent directly". Render serves https, so a page served over https can call it, and the agent port
+   does not have to be made public by hand as in a Codespace.
+
+The settings are fixed in `render.yaml`: the port is `A2A_PORT=10000` to match Render's default `PORT`, the image is
+`Dockerfile.agentcore` (the same one AgentCore uses), and the health check is `/ping`, which needs no key.
+
+**The free plan's limits, for this agent:**
+- **It sleeps.** A free service spins down after 15 minutes without traffic, and the next request takes about a minute
+  while Render shows a loading page. The web app may report "Could not reach ... (CORS)" for that first call, because
+  Render's loading page does not carry the agent's CORS headers (not verified). Wait a minute and try again.
+- **512 MB of memory and 0.1 CPU.** Each run starts the Agent SDK's bundled command-line process next to the server. It may
+  not fit in memory, or may run slowly. Watch the service's **Metrics** during your first runs; if the service is restarted for
+  running out of memory or is too slow, switch it to a paid instance type.
+- **The URL is public.** Anyone who knows it can reach the agent; only `x-api-key` stops them, so keep the generated key
+  secret. To rotate it, edit `AGENT_API_KEYS` (several keys can be comma-separated).
+- The service's **Logs** tab shows the agent's output, including the `run start` line and the MCP status lines.
+
 ## Layout
 
 | File | Role |
@@ -412,6 +456,7 @@ python deploy/agentcore_deploy.py --image <image-uri> --role-arn <execution-role
 | `web/index.html` | The web app: one static file, with the A2A client and the clients list in its script |
 | `scripts/start.sh` | Starts the agent and serves the web app, skipping what is already running; `--restart` restarts both |
 | `Dockerfile.agentcore` | The ARM64 agent image for AgentCore (also fine for any container host) |
+| `render.yaml` | Render Blueprint: runs the agent on Render's free plan (see "Run the agent on Render") |
 | `requirements.txt` | The agent's dependencies |
 | `deploy/` | ECR build/push script and the AgentCore create/update script |
 | `.devcontainer/` | Codespaces setup |
@@ -449,6 +494,12 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
   the card and key check requests and their headers; a chat turn streamed with CRLF line endings cut at arbitrary points;
   tool steps, failed steps, failed tasks, HTTP and JSON-RPC errors with keys redacted; history sent as a data part; wrong
   key, unreachable agent, https page with an http address, bad URL; double-click on Save.
+- *Render, without Render:* the card's address comes from `RENDER_EXTERNAL_URL` (trailing slash added, an explicit
+  `A2A_PUBLIC_URL` wins, blank counts as unset, Codespaces unchanged) and `main()` publishes it to the AgentCore SDK; and
+  `render.yaml` parses and passes structural checks (one free Docker web service; the Dockerfile exists; every variable it
+  sets is one the agent reads and `.env.example` documents; nothing environment-specific is committed; the key is generated;
+  the health path is open; the port matches Render's default; the image binds 0.0.0.0), shown to fail on broken copies. It has
+  not been deployed.
 - *`scripts/start.sh`:* the web half (serves `web/`, reports "already running", `--restart`). Its agent half needs the real SDKs.
 
 **Not yet verified, and needs you on a real machine:**
@@ -478,6 +529,10 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
   indicator; the agent panel slides in and a tap outside closes it; the connected client's row in the Clients sheet (name, Edit, Delete, Disconnect) wraps cleanly on a narrow screen; prompt chips and tables scroll sideways.
 - **Proxy model route:** needs `/v1/messages`, streaming, tool use, `x-api-key`, and your `MODEL_NAME`.
   If it rejects `anthropic-beta` headers, keep `MODEL_DISABLE_BETAS=1`.
+- **Render:** that Render accepts the Blueprint and builds the image; whether it accepts an empty value for a prompted
+  variable (a single space is the fallback); whether 512 MB and 0.1 CPU are enough for a run (the bundled CLI starts per
+  run); that the event stream arrives live through Render's proxy; that the service can reach your gateway's port; and what the
+  web app shows for the first request after a sleep.
 - **AgentCore:** that the SDK's bundled CLI starts in an ARM64 AgentCore container, that the runtime can reach your
   gateway (and Anthropic on the direct route), and that the runtime forwards `X-Api-Key` once allowlisted.
 - **MCP transport `sse`:** only `http` has been exercised.

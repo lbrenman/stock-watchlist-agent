@@ -63,10 +63,14 @@ CORS_ALLOWED_HEADERS = ["content-type", "accept", AGENT_KEY_HEADER, MCP_KEY_HEAD
 # Agent card
 # --------------------------------------------------------------------------- #
 def public_url() -> str:
-    """URL advertised in the card. AgentCore overrides it with AGENTCORE_RUNTIME_URL."""
+    """URL advertised in the card: A2A_PUBLIC_URL, else this Render service's own address, else this Codespace's
+    forwarded address, else localhost. AgentCore overrides it with AGENTCORE_RUNTIME_URL."""
     explicit = os.environ.get("A2A_PUBLIC_URL", "").strip()
     if explicit:
         return explicit
+    render = os.environ.get("RENDER_EXTERNAL_URL", "").strip()  # set by Render for a web service, e.g. https://myapp.onrender.com
+    if render:
+        return render.rstrip("/") + "/"
     name = os.environ.get("CODESPACE_NAME")
     domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
     port = os.environ.get("A2A_PORT", "").strip() or "9000"  # blank counts as unset
@@ -310,8 +314,8 @@ def main() -> None:
     log.info("Model route: %s (%s)", settings.model.route, settings.model.name)
 
     # The AgentCore SDK rewrites the card's url with AGENTCORE_RUNTIME_URL when it is set, and
-    # otherwise with a local address. Where we know a public address (A2A_PUBLIC_URL, or the
-    # Codespaces forwarded address), publish it that way. On AgentCore the variable is already set.
+    # otherwise with a local address. Where we know a public address (A2A_PUBLIC_URL, the Render
+    # service address, or the Codespaces forwarded address), publish it that way. On AgentCore the variable is already set.
     url = public_url()
     if not url.startswith("http://localhost"):
         os.environ.setdefault("AGENTCORE_RUNTIME_URL", url)

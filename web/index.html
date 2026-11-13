@@ -261,8 +261,8 @@
   .evline { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
   .evline.bad { color: var(--loss); white-space: pre-wrap; }
   .kv { display: grid; grid-template-columns: minmax(80px, max-content) 1fr; gap: 3px 14px; font: 12px/1.5 var(--mono); margin: 4px 0; }
-  .kv .k { color: var(--muted); word-break: break-all; }
-  .kv .v { word-break: break-all; }
+  .kv .hname { color: var(--muted); word-break: break-all; }
+  .kv .hvalue { word-break: break-all; }
   .evbody pre { margin: 4px 0 0; padding: 9px 11px; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 var(--mono); overflow: auto; max-height: 320px; white-space: pre-wrap; word-break: break-word; }
   .step.mcp::before { border-color: var(--muted); }
   .step.mcp .sname { color: var(--ink-2); }
@@ -882,7 +882,7 @@ function eventToText(ev, reveal) {
 }
 
 function kvTable(rows) {
-  return h("div", { class: "kv" }, rows.flatMap(([k, v]) => [h("span", { class: "k" }, k), h("span", { class: "v" }, v)]));
+  return h("div", { class: "kv" }, rows.flatMap(([k, v]) => [h("span", { class: "hname" }, k), h("span", { class: "hvalue" }, v)]));
 }
 
 function eventRow(ev) {

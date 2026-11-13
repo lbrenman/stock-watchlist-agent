@@ -284,7 +284,9 @@ Header names are not case sensitive. The agent card and `GET /ping` need no key.
 **clients** and calls the selected client's agent straight from the browser: it fetches the card, checks the key, sends
 each chat turn as `message/stream`, reads the streamed tool calls and answer, and renders answers as markdown (tables with
 aligned numbers and green and red changes). `scripts/start.sh` serves the folder with `python -m http.server` on port 8000;
-any static file host would do. The page is not tied to the agent's settings: it names none of them (no environment variable,
+any static file host would do. If you host `web/index.html` somewhere else (for example on a gateway), it is a copy: put the new
+file there whenever it changes, and reload without the cache. To see which version a host serves, run
+`curl -s <page URL> | grep -c home-screen-flow` (1 for this version, 0 for an older one). The page is not tied to the agent's settings: it names none of them (no environment variable,
 no `.env`) and is told nothing about the agent's environment. All it learns from an agent is its card and the answers to
 its own calls.
 
@@ -455,7 +457,7 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
 - **AI Gateway proxy:** that it answers the CORS preflight; whether it streams tool calls live rather than buffering; and
   `X-Model-Key` through it.
 - **The UI on a desktop browser:** colors, spacing, the new client list and form, the Events panel (long bodies, many rows), the panel collapsing, tables, light and dark mode.
-- **The UI on an iPhone (Safari):** on a first launch the home screen shows the dark brand block (logo, title, "Amplify AI Gateway") whole above the form and scrolls to reach the rest of the form (a tall form once squeezed the brand block to nothing, so the form's heading sat on top of the title; the grid now keeps that row at its full height, checked by reading the CSS, not by rendering it); the page fits without scrolling sideways; the clients sheet slides up from the bottom, its
+- **The UI on an iPhone (Safari):** (the first-launch home screen, with the dark brand block whole above the form, has been seen working on an iPhone in Chrome; a tall form once squeezed that block to nothing, and the grid now keeps its row at full height); the page fits without scrolling sideways; the clients sheet slides up from the bottom, its
   list and form are usable, and focusing a field does not zoom; after the first message the send button, the message box's
   right edge and the tool steps stay inside the screen (the prompt chips once widened the chat past a phone; the CSS now
   lets that column shrink, checked by reading the CSS, not by rendering it) and the message box hint fits on one line; the

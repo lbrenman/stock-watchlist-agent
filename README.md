@@ -456,7 +456,7 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
 - **Codespaces:** that a page opened from the Private port 8000 can call the Public port 9000.
 - **AI Gateway proxy:** that it answers the CORS preflight; whether it streams tool calls live rather than buffering; and
   `X-Model-Key` through it.
-- **The UI on a desktop browser:** colors, spacing, the new client list and form, the Events panel (long bodies, many rows), the panel collapsing, tables, light and dark mode.
+- **The UI on a desktop browser:** colors, spacing, the new client list and form, the Events panel (long bodies, many rows), the agent panel open and closed (closed, the chat must use the full width; it once collapsed to nothing there), tables, light and dark mode.
 - **The UI on an iPhone (Safari):** (the first-launch home screen, with the dark brand block whole above the form, has been seen working on an iPhone in Chrome; a tall form once squeezed that block to nothing, and the grid now keeps its row at full height); the page fits without scrolling sideways; the clients sheet slides up from the bottom, its
   list and form are usable, and focusing a field does not zoom; after the first message the send button, the message box's
   right edge and the tool steps stay inside the screen (the prompt chips once widened the chat past a phone; the CSS now

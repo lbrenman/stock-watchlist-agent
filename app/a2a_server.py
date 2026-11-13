@@ -305,10 +305,26 @@ def _bind_host() -> str:
     return "0.0.0.0" if in_container else "127.0.0.1"
 
 
+class _QuietPing(logging.Filter):
+    """Leave successful GET /ping health checks out of uvicorn's access log: Render and AgentCore each send one every few
+    seconds. A failing check, and every other request, is still logged. A record that is not shaped like uvicorn's access
+    line ('%s - "%s %s HTTP/%s" %d': client, method, path, version, status) is kept."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            _client, method, path, _version, status = record.args
+        except (TypeError, ValueError):
+            return True
+        return not (method == "GET" and str(path).split("?", 1)[0] == "/ping" and str(status) == "200")
+
+
 def main() -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
+    access_log = logging.getLogger("uvicorn.access")   # uvicorn keeps a filter added to this logger when it sets up logging
+    if not any(isinstance(f, _QuietPing) for f in access_log.filters):
+        access_log.addFilter(_QuietPing())
     settings = load_settings()
     inbound = load_inbound_auth()  # raises if AGENT_REQUIRE_API_KEY is set without keys
     log.info("Model route: %s (%s)", settings.model.route, settings.model.name)

@@ -227,7 +227,8 @@ curl http://localhost:9000/.well-known/agent-card.json
   startup the model route and whether `x-api-key` is required; for each run one `run start` line (route, model, MCP host and
   transport, where the MCP key came from), the MCP servers and tools, each tool call and result, and `run done`, or the
   error. Failed tool results and errors are logged with keys redacted. Keys themselves are never logged. uvicorn's own
-  access lines (`POST / ... 200`) go to the same file.
+  access lines (`POST / ... 200`) go to the same file, except successful `GET /ping` health checks: Render and AgentCore send
+  one every few seconds, so those lines are left out (a failing check still shows).
   ```
   INFO:agent:run start: route=gateway model=<name> mcp=<gateway-host> (http) mcp_key_from=x-api-key of the call
   INFO:agent:MCP servers: stockwatchlist=connected; 6 tool(s): AddSymbolToStockWatchList, GetStockQuote, ...
@@ -443,7 +444,8 @@ The settings are fixed in `render.yaml`: the port is `A2A_PORT=10000` to match R
   running out of memory or is too slow, switch it to a paid instance type.
 - **The URL is public.** Anyone who knows it can reach the agent; only `x-api-key` stops them, so keep the generated key
   secret. To rotate it, edit `AGENT_API_KEYS` (several keys can be comma-separated).
-- The service's **Logs** tab shows the agent's output, including the `run start` line and the MCP status lines.
+- The service's **Logs** tab shows the agent's output, including the `run start` line and the MCP status lines. Render's health
+  check calls `/ping` every few seconds; the agent leaves the successful ones out of its log.
 
 ## Layout
 
@@ -468,6 +470,12 @@ server of its own: the agent card is served with the right public URL; the start
 uvicorn); the A2A Inspector and the page both read and write with streamed tool calls; a wrong Agent API key and a wrong MCP
 key each fail; switching the MCP API key returned each account's own watchlist (the `X-Mcp-Key` override works); an AI Gateway
 proxy of the agent worked with the old page, passed `X-Mcp-Key` through, and rejected calls that carry no credentials.
+
+Seen working on Render, from the service's logs: the Blueprint built and started the agent; Render detected it on port 10000
+and its health checks on `/ping` return 200; the card is served; a call without a valid key gets 401; and runs complete with
+the bundled CLI, the MCP server connected (6 tools, reached from Render on the gateway's port), tool calls and results, and
+`mcp_key_from=MCP_API_KEY`. Three runs went by without a restart. In those logs each run spent roughly 5 to 7 seconds
+starting up before the model's work began, which the duration the page shows (the Agent SDK's own figure) does not include.
 
 Tested in a sandbox without the real SDKs or a browser, on the current code:
 - *Disconnect and the top bar, in the same fake browser:* Disconnect is only on the connected client's row in the Clients
@@ -494,12 +502,12 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
   the card and key check requests and their headers; a chat turn streamed with CRLF line endings cut at arbitrary points;
   tool steps, failed steps, failed tasks, HTTP and JSON-RPC errors with keys redacted; history sent as a data part; wrong
   key, unreachable agent, https page with an http address, bad URL; double-click on Save.
-- *Render, without Render:* the card's address comes from `RENDER_EXTERNAL_URL` (trailing slash added, an explicit
+- *Render, without Render, and the /ping log filter:* the card's address comes from `RENDER_EXTERNAL_URL` (trailing slash added, an explicit
   `A2A_PUBLIC_URL` wins, blank counts as unset, Codespaces unchanged) and `main()` publishes it to the AgentCore SDK; and
   `render.yaml` parses and passes structural checks (one free Docker web service; the Dockerfile exists; every variable it
   sets is one the agent reads and `.env.example` documents; nothing environment-specific is committed; the key is generated;
-  the health path is open; the port matches Render's default; the image binds 0.0.0.0), shown to fail on broken copies. It has
-  not been deployed.
+  the health path is open; the port matches Render's default; the image binds 0.0.0.0), shown to fail on broken copies. The filter that leaves successful `GET /ping` lines out of the access log drops only
+  those (a failing `/ping`, the 401s and every chat turn stay), is attached once, and survives a logging config being applied.
 - *`scripts/start.sh`:* the web half (serves `web/`, reports "already running", `--restart`). Its agent half needs the real SDKs.
 
 **Not yet verified, and needs you on a real machine:**
@@ -529,10 +537,11 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
   indicator; the agent panel slides in and a tap outside closes it; the connected client's row in the Clients sheet (name, Edit, Delete, Disconnect) wraps cleanly on a narrow screen; prompt chips and tables scroll sideways.
 - **Proxy model route:** needs `/v1/messages`, streaming, tool use, `x-api-key`, and your `MODEL_NAME`.
   If it rejects `anthropic-beta` headers, keep `MODEL_DISABLE_BETAS=1`.
-- **Render:** that Render accepts the Blueprint and builds the image; whether it accepts an empty value for a prompted
-  variable (a single space is the fallback); whether 512 MB and 0.1 CPU are enough for a run (the bundled CLI starts per
-  run); that the event stream arrives live through Render's proxy; that the service can reach your gateway's port; and what the
-  web app shows for the first request after a sleep.
+- **Render:** whether it accepts an empty value for a prompted variable (a single space is the fallback); whether 512 MB is
+  enough over time (the logs show no restart, but not memory: watch the service's Metrics); that the event stream arrives live
+  through Render's proxy; and what the web app shows for the first request after a sleep.
+- **The /ping log filter in a real run:** that uvicorn keeps the filter when it sets up its logging (checked here with the
+  standard library's logging config, not uvicorn itself).
 - **AgentCore:** that the SDK's bundled CLI starts in an ARM64 AgentCore container, that the runtime can reach your
   gateway (and Anthropic on the direct route), and that the runtime forwards `X-Api-Key` once allowlisted.
 - **MCP transport `sse`:** only `http` has been exercised.

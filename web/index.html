@@ -675,7 +675,8 @@ function cardUrl(client) {
 
 function a2aHeaders(client, { json = false, sse = false, mcp = false } = {}) {
   const hd = { Accept: sse ? "text/event-stream" : "application/json" };
-  if (json) hd["Content-Type"] = "application/json";
+  // A2A 1.0: every JSON-RPC call states the protocol version. The card fetch does not (it is how a client learns it).
+  if (json) { hd["Content-Type"] = "application/json"; hd["A2A-Version"] = "1.0"; }
   if (client.agentKey) hd["x-api-key"] = client.agentKey;
   if (mcp && client.mcpKey) hd["X-Mcp-Key"] = client.mcpKey;
   return hd;
@@ -705,7 +706,7 @@ async function checkAgentKey(client) {
   const { resp } = await a2aFetch(client, KIND.check, client.url, {
     method: "POST",
     headers: a2aHeaders(client, { json: true }),
-    body: JSON.stringify({ jsonrpc: "2.0", id: hex(), method: "tasks/get", params: { id: "connect-check" } }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: hex(), method: "GetTask", params: { id: "connect-check" } }),
   });
   if (resp.status === 401 || resp.status === 403) throw new A2AError(rejection(resp.status));
 }
@@ -726,14 +727,18 @@ async function connectClient(client) {
       name: card.name || "A2A agent",
       description: card.description || "",
       version: card.version || "",
-      advertised_url: card.url || "",
+      advertised_url: (((card.supportedInterfaces || [])[0]) || {}).url || "",
       skills: (card.skills || []).map((s) => ({ name: s.name || "", description: s.description || "" })),
     },
   };
 }
 
 const partsOf = (message) => (message && message.parts) || [];
-const textOf = (parts) => parts.filter((p) => p.kind === "text").map((p) => p.text || "").join("\n").trim();
+// A2A 1.0 parts have no "kind": a text part carries "text", a data part carries "data".
+const textOf = (parts) => parts.filter((p) => typeof p.text === "string").map((p) => p.text).join("\n").trim();
+const dataOf = (parts) => parts.filter((p) => p.data && typeof p.data === "object").map((p) => p.data);
+// On the wire a task state is TASK_STATE_COMPLETED; the rest of this page says completed, input-required, and so on.
+const stateOf = (s) => String(s || "").replace(/^TASK_STATE_/, "").toLowerCase().replace(/_/g, "-");
 
 function finish(out, st) {
   if (st.finished) return;
@@ -742,17 +747,15 @@ function finish(out, st) {
   st.finished = true;
 }
 
-// One A2A streaming result object -> chat events. `st` carries across calls.
+// One A2A 1.0 stream result -> chat events. A result holds exactly one of task, message, statusUpdate, artifactUpdate.
+// `st` carries across calls.
 function mapResult(result, st) {
   const out = [];
-  const kind = result.kind;
-  if (kind === "status-update") {
-    const status = result.status || {};
-    const s = status.state;
+  if (result.statusUpdate) {
+    const status = result.statusUpdate.status || {};
+    const s = stateOf(status.state);
     const parts = partsOf(status.message);
-    const events = parts
-      .filter((p) => p.kind === "data" && p.data && typeof p.data === "object" && ["tool_call", "tool_result", "mcp_status"].includes(p.data.event))
-      .map((p) => p.data);
+    const events = dataOf(parts).filter((d) => ["tool_call", "tool_result", "mcp_status"].includes(d.event));
     for (const d of events) {
       if (d.event === "tool_call") out.push({ type: "tool_call", id: d.id || "", name: d.name || "", input: d.input || {} });
       else if (d.event === "mcp_status") out.push({ type: "mcp_status", servers: d.servers || [], tools: d.tools || [] });
@@ -769,34 +772,38 @@ function mapResult(result, st) {
       if (text && !events.length) { out.push({ type: "text", text }); st.textSeen = true; }
       if (s === "completed") finish(out, st);
     }
-  } else if (kind === "artifact-update") {
-    st.artifactText = ((st.artifactText || "") + textOf(partsOf(result.artifact))).trim();
-  } else if (kind === "message") {
-    const text = textOf(partsOf(result));
+  } else if (result.artifactUpdate) {
+    st.artifactText = ((st.artifactText || "") + textOf(partsOf(result.artifactUpdate.artifact))).trim();
+  } else if (result.message) {
+    const text = textOf(partsOf(result.message));
     if (text) { out.push({ type: "text", text }); st.textSeen = true; }
-  } else if (kind === "task") {
-    const status = result.status || {};
-    for (const artifact of result.artifacts || []) st.artifactText = ((st.artifactText || "") + "\n" + textOf(partsOf(artifact))).trim();
-    if (status.state === "failed") {
+  } else if (result.task) {
+    const status = result.task.status || {};
+    const s = stateOf(status.state);
+    for (const artifact of result.task.artifacts || []) st.artifactText = ((st.artifactText || "") + "\n" + textOf(partsOf(artifact))).trim();
+    if (s === "failed") {
       out.push({ type: "error", message: textOf(partsOf(status.message)) || "The agent failed." });
       st.finished = true;
-    } else if (status.state === "completed") finish(out, st);
+    } else if (s === "completed") finish(out, st);
   }
   return out;
 }
 
-// One chat turn: message/stream, read as a server-sent-event stream. Yields chat events.
+// One chat turn: SendStreamingMessage, read as a server-sent-event stream. Yields chat events.
 // Each call stands alone; earlier turns go along as a data part.
+const rpcError = (e) => `A2A error ${e.code}: ${e.message}` +
+  (e.code === -32601 ? ". The agent may speak an older A2A version: this page speaks A2A 1.0 only." : "");
+
 async function* streamChat(client, messages, signal) {
   const secrets = secretsOf(client);
   const history = messages.slice(0, -1);
   const last = messages[messages.length - 1];
   const parts = [];
-  if (history.length) parts.push({ kind: "data", data: { history } });
-  parts.push({ kind: "text", text: last.content });
+  if (history.length) parts.push({ data: { history } });
+  parts.push({ text: last.content });
   const payload = {
-    jsonrpc: "2.0", id: hex(), method: "message/stream",
-    params: { message: { kind: "message", role: "user", messageId: hex(), parts } },
+    jsonrpc: "2.0", id: hex(), method: "SendStreamingMessage",
+    params: { message: { role: "ROLE_USER", messageId: hex(), parts } },
   };
   const st = { t0: performance.now() };
   let ev = null;
@@ -834,15 +841,21 @@ async function* streamChat(client, messages, signal) {
         let obj;
         try { obj = JSON.parse(line.slice(5).trim()); } catch { continue; }
         if (obj.error) {
-          yield { type: "error", message: redact(`A2A error ${obj.error.code}: ${obj.error.message}`, secrets) };
+          yield { type: "error", message: redact(rpcError(obj.error), secrets) };
           return;
         }
+        st.sawEvent = true;
         for (const ev of mapResult(obj.result || {}, st)) {
           if (ev.message) ev.message = redact(ev.message, secrets);
           yield ev;
         }
       }
       if (done) break;
+    }
+    if (!st.sawEvent) {   // no event lines at all: the agent may have answered with a plain JSON-RPC error instead of a stream
+      let body = null;
+      try { body = JSON.parse(ev.resBody); } catch {}
+      if (body && body.error) { yield { type: "error", message: redact(rpcError(body.error), secrets) }; return; }
     }
   } catch (err) {
     if (err.name === "AbortError") {   // the page cancelled this turn: nobody is waiting for it

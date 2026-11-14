@@ -15,7 +15,8 @@ The agent is always its own process (`python -m app.a2a_server`), whether it run
 Bedrock AgentCore Runtime. The web app is only files (`web/index.html`): it has no server, no settings and no connection
 to the agent except the address and keys you give it, so the same page can talk to any agent you can reach. Because the
 browser calls the agent directly, the agent answers CORS requests from any origin (access is controlled by the
-`x-api-key` header, not by cookies). Other A2A clients can discover and call the agent through its card.
+`x-api-key` header, not by cookies). Other A2A clients can discover and call the agent through its card. The agent speaks
+**A2A 1.0 only**: a 0.3 client no longer works against it, and this version of the web app no longer works against a 0.3 agent.
 
 ## Model route: two options
 
@@ -152,9 +153,9 @@ who clicks it gets their own Codespace without your keys and must supply their o
 
 10. **Agent card** (open, no key needed):
     ```bash
-    curl -s http://localhost:9000/.well-known/agent-card.json | grep -o '"url":"[^"]*"'
+    curl -s http://localhost:9000/.well-known/agent-card.json | grep -o '"url": *"[^"]*"'
     ```
-    This should print your forwarded `-9000` address. If it prints `http://localhost:9000/`, set `A2A_PUBLIC_URL`
+    This should print your forwarded `-9000` address (in the card it sits under `supportedInterfaces`). If it prints `http://localhost:9000/`, set `A2A_PUBLIC_URL`
     (see "Fix the card address").
 11. **Send a message** with the curl command in "Call the agent directly (curl)" below. You should see `data:` lines
     for tool calls and results, then the answer.
@@ -170,7 +171,7 @@ A2A_PUBLIC_URL=https://<codespace-name>-9000.app.github.dev/
 
 then `bash scripts/start.sh --restart`. The address changes if you create a new Codespace. The web app does not use the
 address in the card (it calls the URL you gave it), but other A2A clients do, such as the A2A Inspector, whose sends fail
-with a 404 if the card's `url` has no port. The agent panel warns when a remote agent's card still advertises `localhost`.
+with a 404 if the card's address (`supportedInterfaces[0].url`) has no port. The agent panel warns when a remote agent's card still advertises `localhost`.
 
 ### Restart (after editing `.env` or a secret)
 
@@ -200,6 +201,7 @@ automatically when it resumes. Saved clients live in your browser, not in the Co
 | I edited `.env` or a secret and nothing changed | The agent reads it only when it starts. `bash scripts/start.sh --restart`, then check the first line of `tail /tmp/a2a.log`: it names the model route and `x-api-key` status. |
 | The model says it has no quote tool, or no tools | The agent could not use the MCP server. Open the "MCP connection" line at the top of the answer (it opens itself when a server failed) and the Events screen, and read `/tmp/a2a.log`: `MCP servers: stockwatchlist=failed` and `mcp_key_from=` say what happened. Usual causes: the MCP key was rejected (see "Which MCP key the agent uses"), a wrong `MCP_URL`, or the wrong `MCP_TRANSPORT` (try `sse`). |
 | Card advertises `localhost` | Set `A2A_PUBLIC_URL` as above and restart. |
+| "A2A error -32601: Method not found. The agent may speak an older A2A version" | The agent is not on A2A 1.0 (an older deployment). Redeploy it from this version, or use the web app that matches it. The page and the agent must speak the same version. |
 | An old `.env` has `AGENT_MODE`, `A2A_AGENT_URL`, `A2A_API_KEY`, `A2A_AUTH_MODE`, `A2A_BEARER_TOKEN` or `A2A_REGION` | They are ignored now; delete the lines. The agent is always its own process, and the web app takes the URL and keys in the browser. |
 
 ## The A2A agent
@@ -213,13 +215,19 @@ curl http://localhost:9000/.well-known/agent-card.json
   `x-api-key` scheme (listed as required when `AGENT_API_KEYS` is set) plus the optional `X-Mcp-Key` input.
 - **Keys per request:** `x-api-key` (access), `X-Mcp-Key` (whose watchlist) and `X-Model-Key` (proxy key). The last two are
   optional, with the fallbacks described in "Which MCP key the agent uses".
+- **Protocol: A2A 1.0 only.** JSON-RPC methods are the 1.0 names (`SendMessage`, `SendStreamingMessage`, `GetTask`, ...) and
+  every call must carry the header `A2A-Version: 1.0` (the A2A spec tells a server to assume 0.3 for a call without it).
+  Parts are flat (`{"text": ...}`, `{"data": ...}`, no `kind`), roles are `ROLE_USER` and `ROLE_AGENT`, task states are
+  `TASK_STATE_*`, and the card's address is in `supportedInterfaces`.
 - **Browsers:** the agent answers CORS preflights and sends CORS headers for any origin. It allows the headers `Content-Type`,
-  `Accept`, `x-api-key`, `X-Mcp-Key`, `X-Model-Key` and the AgentCore session header, and exposes all of its response
-  headers to the page (so the Events screen can show them).
+  `Accept`, `x-api-key`, `X-Mcp-Key`, `X-Model-Key`, `A2A-Version` and the AgentCore session header, and exposes all of its
+  response headers to the page (so the Events screen can show them).
 - **Stateless:** each message stands alone. A caller can add prior turns as a data part
-  `{"history": [{"role": "user"|"assistant", "content": "..."}]}` beside the text part; the web app does this.
-- **Streaming:** `message/stream` sends status updates for each tool call and result (a text part plus a data part
-  `{"event": "tool_call"|"tool_result", ...}`), then the final answer as an artifact. Once at the start of a run it also sends
+  `{"data": {"history": [{"role": "user"|"assistant", "content": "..."}]}}` beside the text part; the web app does this.
+- **Streaming:** `SendStreamingMessage` is a task stream, as 1.0 requires: the Task first, then status updates (state
+  `TASK_STATE_WORKING`) for each tool call and result (a text part plus a data part
+  `{"event": "tool_call"|"tool_result", ...}`), then the final answer as an artifact, then `TASK_STATE_COMPLETED` (or
+  `TASK_STATE_FAILED` with the reason). The stream ends at that state; 1.0 has no `final` flag. Once at the start of a run it also sends
   `{"event": "mcp_status", "servers": [...], "tools": [...]}`: whether the MCP server connected
   (`connected`, `failed`, `needs-auth`, `pending` or `disabled`, as the Agent SDK reports it at the start of a run) and which
   tools loaded. `pending` is not a failure by itself.
@@ -236,8 +244,9 @@ curl http://localhost:9000/.well-known/agent-card.json
   INFO:agent:tool result: ok (120 chars)
   INFO:agent:run done: 2 turn(s), 5400 ms
   ```
-- Uses a2a-sdk 0.3.x and the AgentCore SDK's `build_a2a_app`, wrapped with the CORS and key-check middleware and run by
-  uvicorn. `/ping` and the card come from the SDK.
+- Uses a2a-sdk 1.x and the AgentCore SDK's `build_a2a_app` (installed with its `a2a-v1` extra, which AgentCore documents as the
+  opt-in for A2A 1.x and which excludes the `a2a` extra), wrapped with the CORS and key-check middleware and run by
+  uvicorn. `/ping` and the JSON-RPC route come from the SDK; the card is built in `app/a2a_server.py` from its JSON form.
 
 ### Call the agent directly (curl)
 
@@ -248,33 +257,34 @@ including each tool call and result as it happens:
 curl -N http://localhost:9000/ \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
+  -H "A2A-Version: 1.0" \
   -H "x-api-key: <AGENT_API_KEY>" \
   -H "X-Mcp-Key: <MCP_API_KEY>" \
   -d '{
     "jsonrpc": "2.0",
     "id": "1",
-    "method": "message/stream",
+    "method": "SendStreamingMessage",
     "params": {
       "message": {
-        "kind": "message",
-        "role": "user",
+        "role": "ROLE_USER",
         "messageId": "msg-1",
-        "parts": [{"kind": "text", "text": "Show my watchlist"}]
+        "parts": [{"text": "Show my watchlist"}]
       }
     }
   }'
 ```
 
-For one JSON response instead of a stream, use `"method": "message/send"` and drop `-N` and the `Accept` header.
+For one JSON response instead of a stream, use `"method": "SendMessage"` and drop `-N` and the `Accept` header.
 For a Codespace or a gateway proxy, replace `http://localhost:9000/` with that URL.
 
 | Header | Required? | Purpose |
 |---|---|---|
 | `Content-Type: application/json` | Yes | JSON-RPC body |
+| `A2A-Version: 1.0` | Yes, on every JSON-RPC call | The protocol version. Without it the agent is told to assume 0.3, which it does not speak |
 | `x-api-key` | When `AGENT_API_KEYS` is set on the agent (always, with `AGENT_REQUIRE_API_KEY=1`) | The agent's own access key. Missing or wrong: HTTP 401. With no `AGENT_API_KEYS` the agent is open. It is also the last-resort MCP key |
 | `X-Mcp-Key` | Optional | The MCP API key, which decides whose watchlist is used. Blank or absent falls back to `MCP_API_KEY` on the agent, then to the `x-api-key` of the call |
 | `X-Model-Key` | Optional | Overrides the model or gateway key, falling back to `MODEL_API_KEY`. Ignored in direct Anthropic mode |
-| `Accept: text/event-stream` | For `message/stream` | What the web app sends |
+| `Accept: text/event-stream` | For `SendStreamingMessage` | What the web app sends |
 | `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` | Only when calling through AgentCore | The agent code never reads it. AgentCore requires it (33 or more characters) |
 
 Header names are not case sensitive. The agent card and `GET /ping` need no key.
@@ -283,11 +293,11 @@ Header names are not case sensitive. The agent card and `GET /ping` need no key.
 
 `web/index.html` is one file of HTML, CSS and JavaScript with no build step and no server logic. It keeps a list of
 **clients** and calls the selected client's agent straight from the browser: it fetches the card, checks the key, sends
-each chat turn as `message/stream`, reads the streamed tool calls and answer, and renders answers as markdown (tables with
+each chat turn as `SendStreamingMessage` (A2A 1.0, with the `A2A-Version: 1.0` header), reads the streamed tool calls and answer, and renders answers as markdown (tables with
 aligned numbers and green and red changes). `scripts/start.sh` serves the folder with `python -m http.server` on port 8000;
 any static file host would do. If you host `web/index.html` somewhere else (for example on a gateway), it is a copy: put the new
 file there whenever it changes, and reload without the cache. To see which version a host serves, run
-`curl -s <page URL> | grep -c home-screen-flow` (1 for this version, 0 for an older one). The page is not tied to the agent's settings: it names none of them (no environment variable,
+`curl -s <page URL> | grep -c SendStreamingMessage` (a number above 0 for this version, 0 for the previous A2A 0.3 version). The page is not tied to the agent's settings: it names none of them (no environment variable,
 no `.env`) and is told nothing about the agent's environment. All it learns from an agent is its card and the answers to
 its own calls.
 
@@ -336,7 +346,7 @@ Add a client with that agent's URL. No code change and no restart. The page uses
 inside the card. So the URL must be an address that serves both. Browsers add two limits:
 
 - **CORS.** The agent (or whatever sits in front of it) must answer the browser's preflight request without credentials and
-  allow the request headers `content-type`, `accept`, `x-api-key` and `x-mcp-key`. The agent itself does.
+  allow the request headers `content-type`, `accept`, `x-api-key`, `x-mcp-key` and `a2a-version`. The agent itself does.
 - **https pages.** A page served over https cannot call an `http://` address, except `localhost`. The page says so.
 
 **The agent is on this machine.** `http://localhost:9000/`.
@@ -348,8 +358,9 @@ same Codespace, from your laptop, or from any other host.
 **The agent is proxied in AI Gateway.** Use the proxy's URL. The proxy must:
 - serve the card at `<proxy URL>/.well-known/agent-card.json` and accept the JSON-RPC POST at the proxy URL itself;
 - not buffer the response, or tool calls appear only when the answer finishes;
-- pass `X-Mcp-Key` and `X-Model-Key` through to the agent. If it drops `X-Mcp-Key`, every user silently gets the agent's
-  default watchlist;
+- pass `A2A-Version`, `X-Mcp-Key` and `X-Model-Key` through to the agent. If it drops `A2A-Version`, the agent is told to
+  assume 0.3 and every call fails; if it drops `X-Mcp-Key`, every user silently gets the agent's default watchlist;
+- speak A2A 1.0 itself: a gateway that only knows 0.3 cannot carry these calls;
 - **answer the CORS preflight itself.** A preflight carries no credentials, so a proxy that rejects calls without credentials
   will reject it unless it is set up to answer `OPTIONS` first. This has not been tried; see "Verification status".
 
@@ -392,11 +403,12 @@ python deploy/agentcore_deploy.py --image <image-uri> --role-arn <execution-role
 ```
 
 - The script creates the runtime with protocol A2A, public network mode, IAM (SigV4) auth for callers, and the request
-  header allowlist `X-Mcp-Key`, `X-Model-Key` and `X-Api-Key`, so each caller's keys reach the agent.
+  header allowlist `X-Mcp-Key`, `X-Model-Key`, `X-Api-Key` and `A2A-Version`, so each caller's keys and protocol version reach the agent.
   Add `--jwt-discovery-url` and `--jwt-allowed-client` for a JWT authorizer instead (it also allowlists `Authorization`).
   Use `--update <runtime-id>` to redeploy.
 - AgentCore's own IAM or JWT auth gates who can invoke the runtime; `AGENT_API_KEYS` is a second layer inside it.
-  If the runtime does not forward `X-Api-Key` to the container, every call gets a 401 (see "Not yet verified").
+  If the runtime does not forward `X-Api-Key` to the container, every call gets a 401, and if it does not forward `A2A-Version`
+  every call fails as a 0.3 call (see "Not yet verified").
 - You create the IAM execution role yourself (see the AgentCore docs, "Runtime permissions").
 - Values you export become the runtime's environment variables, readable by anyone who can read the runtime
   configuration. Fine for a demo with throwaway keys; move them to Secrets Manager later.
@@ -426,7 +438,7 @@ it: use any copy of the web app, or curl, with the service's URL.
 4. The agent's address is `https://<service-name>.onrender.com/`, shown at the top of the service page. The card advertises it
    without any setting (the agent reads `RENDER_EXTERNAL_URL`, which Render sets). Check it:
    ```bash
-   curl -s https://<service-name>.onrender.com/.well-known/agent-card.json | grep -o '"url":"[^"]*"'
+   curl -s https://<service-name>.onrender.com/.well-known/agent-card.json | grep -o '"url": *"[^"]*"'
    ```
 5. In the web app add a client with that URL and the generated key (and an MCP key if you use one), or call it with the curl
    command in "Call the agent directly". Render serves https, so a page served over https can call it, and the agent port
@@ -465,19 +477,45 @@ The settings are fixed in `render.yaml`: the port is `A2A_PORT=10000` to match R
 
 ## Verification status
 
-Tested by hand in a GitHub Codespace on the earlier version of this project, when the page still went through a small
+**A2A 1.0 migration:** everything under "Tested by hand" and "Seen working on Render" below was done on the previous version,
+which spoke A2A 0.3. None of it has been repeated on 1.0 yet; the 1.0 items under "Not yet verified" come first for that
+reason.
+
+Tested by hand in a GitHub Codespace on the earlier version of this project (A2A 0.3), when the page still went through a small
 server of its own: the agent card is served with the right public URL; the startup path (`build_a2a_app`, key middleware,
 uvicorn); the A2A Inspector and the page both read and write with streamed tool calls; a wrong Agent API key and a wrong MCP
 key each fail; switching the MCP API key returned each account's own watchlist (the `X-Mcp-Key` override works); an AI Gateway
 proxy of the agent worked with the old page, passed `X-Mcp-Key` through, and rejected calls that carry no credentials.
 
-Seen working on Render, from the service's logs: the Blueprint built and started the agent; Render detected it on port 10000
+Seen working on Render (A2A 0.3), from the service's logs: the Blueprint built and started the agent; Render detected it on port 10000
 and its health checks on `/ping` return 200; the card is served; a call without a valid key gets 401; and runs complete with
 the bundled CLI, the MCP server connected (6 tools, reached from Render on the gateway's port), tool calls and results, and
 `mcp_key_from=MCP_API_KEY`. Three runs went by without a restart. In those logs each run spent roughly 5 to 7 seconds
 starting up before the model's work began, which the duration the page shows (the Agent SDK's own figure) does not include.
 
 Tested in a sandbox without the real SDKs or a browser, on the current code:
+- *A2A 1.0, the agent, with stand-ins:* Part, Message and the card are real protobuf messages built from the documented 1.0
+  field names (so `HasField`, oneofs, `Value`, `ParseDict` and `MessageToDict` behave as in the SDK); the SDK, Starlette, AgentCore
+  and uvicorn are stand-ins. A run's stream is the Task first and then only status and artifact updates (never a bare Message),
+  in the order working x N, artifact (marked last chunk), completed; an agent error or a missing key ends it as failed with the
+  reason and nothing after; the ids on every event; the data parts (mcp_status, tool_call, tool_result) read back as the
+  original dicts; history and text parts read from 1.0 wire JSON, including dropped bad entries; the three headers still reach
+  the agent run, and a warning is logged when no headers reach the executor; the card has no top-level `url`, has
+  `supportedInterfaces` with `JSONRPC` and `1.0`, requires `agentKey` only when keys are set and follows `A2A_PUBLIC_URL`;
+  CORS allows `a2a-version` plus the earlier headers; the context builder keeps the headers whether the base `build` is sync
+  or async; `main()` passes the card and executor to `build_a2a_app` and adds the CORS middleware after the key middleware.
+  Each check was shown to fail on a deliberately broken copy (Task not first, history ignored, `a2a-version` missing from CORS,
+  a 0.3 `url` in the card, a sync-only context builder, an error sent as a bare Message, the artifact not marked last).
+- *A2A 1.0, the page's real script against a fake DOM, a fake `fetch` and a fake 1.0 agent:* the card fetch carries no
+  `A2A-Version` and the JSON-RPC calls do; the key check is `GetTask`; a chat turn is `SendStreamingMessage` with role
+  `ROLE_USER`, flat parts and no `kind` anywhere in the body; history goes as a flat data part; a full run becomes the tool
+  steps, the MCP status, the answer and done, the same however the stream is cut (CRLF, every chunk size from 1 to 40); failed
+  and input-required tasks show the agent's message; states are read as `TASK_STATE_*` and also as lowercase; a JSON-RPC
+  error in the stream, and a plain JSON error body instead of a stream, both show the code, message and an older-version hint
+  for -32601; keys never appear in an error; the Events screen records the method and the version header; the page still
+  names no agent setting. The previous (0.3) page fails 11 of these 15 checks, and eight deliberate breakages of the new page
+  (no version header, results read as 0.3 objects, states not normalised, role `user`, plain errors not looked for, the old
+  method name, the 0.3 `url` field, the header also on the card fetch) are each caught.
 - *Disconnect and the top bar, in the same fake browser:* Disconnect is only on the connected client's row in the Clients
   sheet (not on the other rows, not in the agent panel, not on the home screen) and closes the sheet; the top bar has one
   Clients button with a people icon and the client's name (no pill, no sun-like icon); it shows the home screen with the clients listed and
@@ -511,6 +549,27 @@ Tested in a sandbox without the real SDKs or a browser, on the current code:
 - *`scripts/start.sh`:* the web half (serves `web/`, reports "already running", `--restart`). Its agent half needs the real SDKs.
 
 **Not yet verified, and needs you on a real machine:**
+
+- **A2A 1.0, first start with the real packages.** Everything here was built from the SDK's migration guide and API pages, not run
+  against the SDK. In order: (1) `pip install -r requirements.txt` resolves. The `a2a-v1` extra of `bedrock-agentcore` is
+  documented, but I did not find which release added it (the pin `>=1.24` assumes this one has it), and `a2a-sdk[all]` assumes
+  1.x still has an `all` extra (pip only warns if not). (2) The agent starts: `ParseDict` accepts the card (a wrong field name
+  fails at startup and names the field), and `build_a2a_app` in v1 mode accepts the card, the executor and the context
+  builder. (3) `curl <agent>/.well-known/agent-card.json` shows `supportedInterfaces` with the right address. (4) The curl
+  command in "Call the agent directly" streams a task: the SDK enforces the 1.0 stream rules and raises an error for a stream
+  that does not start with the Task. (5) The web app connects, and a chat turn shows the tool steps. (6) **`X-Mcp-Key` reaches the
+  agent:** switch the client's MCP key and check that the `run start` log line says `mcp_key_from=X-Mcp-Key header`. The
+  context builder was changed to cope with an async base class, and I could not see AgentCore's 1.x one. If the log says
+  "No request headers reached the executor", that is the cause.
+- **A2A 1.0 wire details I took from documentation, not from this SDK:** the stream result members (`task`, `message`,
+  `statusUpdate`, `artifactUpdate`), the strings `ROLE_USER` and `TASK_STATE_*`, the key check `GetTask` with `params.id`, and
+  that the SDK accepts `ROLE_USER` in a request. A wrong guess shows up as a JSON-RPC error in the page, which now names it.
+- **A2A Inspector on 1.0:** that it connects and sends (it did on 0.3).
+- **AI Gateway proxy with 1.0:** that it carries 1.0 calls, passes `A2A-Version` through, and that its CORS policy lists
+  `a2a-version` (the policy needs that header added) on both the agent route and the card route.
+- **AgentCore Runtime with 1.0:** that the runtime accepts a 1.0 A2A agent, and forwards `A2A-Version` now that it is allowlisted.
+- **Integer tool inputs:** a 1.0 data part holds a protobuf Value, so a whole number in a tool call's input (none of the six
+  tools take one today) would show as `5.0` in the page.
 
 - **CORS end to end, in a real browser.** That the agent answers the preflight and the page can read its answers and its 401.
   The check: with a wrong Agent API key the page must say "The agent rejected the Agent API key", not "Could not reach ...

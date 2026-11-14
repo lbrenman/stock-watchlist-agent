@@ -34,8 +34,9 @@ RUNTIME_ENV_NAMES = [
     "MCP_URL", "MCP_TRANSPORT", "MCP_SERVER_NAME", "MCP_AUTH_MODE", "MCP_API_KEY_HEADER", "MCP_API_KEY",
     "AGENT_MAX_TURNS", "AGENT_API_KEYS", "AGENT_REQUIRE_API_KEY",
 ]
-# Request headers the A2A server reads (must be allowlisted or AgentCore drops them).
-BASE_HEADER_ALLOWLIST = ["X-Mcp-Key", "X-Model-Key", "X-Api-Key"]
+# Request headers the A2A server reads (must be allowlisted or AgentCore drops them). A2A-Version is how an A2A 1.0
+# caller says which protocol version it speaks; the agent is 1.0 only, so without it every call would fail.
+BASE_HEADER_ALLOWLIST = ["X-Mcp-Key", "X-Model-Key", "X-Api-Key", "A2A-Version"]
 
 
 def main() -> int:
